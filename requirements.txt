@@ -1,0 +1,39 @@
+# Python依赖包
+
+# 核心库
+aiohttp>=3.9.0
+websockets>=12.0
+pandas>=2.0.0
+numpy>=1.24.0
+sqlalchemy>=2.0.0
+pydantic>=2.0.0
+
+# 配置管理
+PyYAML>=6.0
+python-dotenv>=1.0.0
+
+# 日志
+loguru>=0.7.0
+
+# 安全
+cryptography>=41.0.0
+
+# 数据库
+psycopg2-binary>=2.9.0  # PostgreSQL
+influxdb-client>=1.38.0  # InfluxDB
+redis>=5.0.0  # Redis
+
+# HTTP客户端
+httpx>=0.25.0
+requests>=2.31.0
+
+# 数据处理
+ta-lib>=0.4.28  # 技术指标（可选）
+
+# 测试
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# 工具
+python-dateutil>=2.8.0

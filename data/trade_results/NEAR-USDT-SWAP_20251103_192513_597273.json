@@ -1,0 +1,26 @@
+{
+  "record_id": "NEAR-USDT-SWAP_20251103_192513_597273",
+  "timestamp": "2025-11-03T19:25:13.597302",
+  "symbol": "NEAR-USDT-SWAP",
+  "decision": {
+    "action": "short",
+    "position_size": 0.0315,
+    "entry_price": 1.998,
+    "confidence": 0.54
+  },
+  "ai_analysis": {
+    "recommendation": "unknown",
+    "confidence": 0,
+    "trend": "unknown",
+    "technical_signal": "unknown",
+    "reasoning": "",
+    "key_factors": [],
+    "volume_price_analysis": "",
+    "market_maker_intent": ""
+  },
+  "market_conditions": {
+    "price": 1.998,
+    "change_24h": -8.011049723756912,
+    "indicators": {
+      "symbol": "NEAR-USDT-SWAP",
+      "timestamp": 

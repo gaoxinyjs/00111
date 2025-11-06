@@ -1,0 +1,57 @@
+# OKX API配置
+okx:
+  api_key: "${OKX_API_KEY}"
+  secret_key: "${OKX_SECRET_KEY}"
+  passphrase: "${OKX_PASSPHRASE}"
+  base_url: "https://www.okx.com"
+  test_mode: true  # 是否使用测试环境（模拟盘）
+  trade_mode: "cross"  # 交易模式：cross全仓保证金（合约）, isolated逐仓保证金（合约）, cash现货
+  
+  # 限流配置
+  rate_limit:
+    rest_requests_per_second: 10
+    websocket_messages_per_second: 100
+  
+  # 重试配置
+  retry:
+    max_retries: 3
+    retry_delay: 1  # 秒
+    backoff_factor: 2
+  
+  # WebSocket配置
+  websocket:
+    reconnect_interval: 5  # 秒
+    ping_interval: 20  # 秒
+
+# DeepSeek API配置
+deepseek:
+  api_key: "${DEEPSEEK_API_KEY}"
+  base_url: "https://api.deepseek.com"
+  model: "deepseek-chat"
+  temperature: 0.3
+  max_tokens: 2000
+  
+  # 限流配置
+  rate_limit:
+    requests_per_minute: 20
+  
+  # 重试配置
+  retry:
+    max_retries: 5  # 增加最大重试次数到5次（应对网络不稳定）
+    retry_delay: 3  # 增加初始重试延迟到3秒
+  
+  # 超时配置
+  timeout:
+    connect_timeout: 10  # 连接超时：10秒（建立连接的时间限制）
+    read_timeout: 90  # 读取超时：90秒（AI响应可能需要较长时间）
+    total_timeout: 120  # 总超时：120秒（整个请求的总时间限制）
+
+# 其他数据源API
+data_sources:
+  glassnode:
+    api_key: "${GLASSNODE_API_KEY}"
+    enabled: false
+  
+  cryptoquant:
+    api_key: "${CRYPTOQUANT_API_KEY}"
+    enabled: false

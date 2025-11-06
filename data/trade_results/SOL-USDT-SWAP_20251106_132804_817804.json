@@ -1,0 +1,26 @@
+{
+  "record_id": "SOL-USDT-SWAP_20251106_132804_817804",
+  "timestamp": "2025-11-06T13:28:04.817838",
+  "symbol": "SOL-USDT-SWAP",
+  "decision": {
+    "action": "long",
+    "position_size": 0.10371028217397245,
+    "entry_price": 160.15,
+    "confidence": 0.7
+  },
+  "ai_analysis": {
+    "recommendation": "unknown",
+    "confidence": 0,
+    "trend": "unknown",
+    "technical_signal": "unknown",
+    "reasoning": "",
+    "key_factors": [],
+    "volume_price_analysis": "",
+    "market_maker_intent": ""
+  },
+  "market_conditions": {
+    "price": 160.3,
+    "change_24h": 1.661593099949267,
+    "indicators": {
+      "symbol": "SOL-USDT-SWAP",
+      "timestamp": 

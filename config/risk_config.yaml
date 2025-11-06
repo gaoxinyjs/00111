@@ -1,0 +1,120 @@
+# 仓位管理（针对15分钟K线优化：支持固定USDT和比例两种模式）
+position_management:
+  # 模式选择：fixed_usdt（固定USDT）、percentage（比例）、hybrid（混合）
+  mode: "fixed_usdt"  # 推荐使用固定USDT模式，适合15分钟K线
+  
+  # 固定USDT配置（推荐）
+  fixed_usdt_per_trade: 1000  # 每次固定1000 USDT
+  min_usdt_per_trade: 500  # 最小500 USDT
+  max_usdt_per_trade: 2000  # 最大2000 USDT
+  
+  # 比例模式配置（备用）
+  base_position_size: 0.05  # 基础仓位5%（针对15分钟K线）
+  max_position_size: 0.15  # 最大仓位15%（针对15分钟K线）
+  min_position_size: 0.02  # 最小仓位2%
+  max_total_position: 0.60  # 组合最大仓位60%
+  
+  # 信心度倍数（参考ds-main）
+  confidence_multipliers:
+    high: 1.5  # HIGH信心度（>=0.8）
+    medium: 1.0  # MEDIUM信心度（>=0.6）
+    low: 0.5  # LOW信心度（<0.6）
+  
+  # 信号强度倍数
+  signal_strength_multipliers:
+    strong: 1.2  # 强信号（>=0.7）
+    medium: 1.0  # 中等强信号（>=0.6）
+    normal: 0.8  # 中等信号（>=0.5）
+    weak: 0.6  # 弱信号（>=0.4）
+    very_weak: 0.4  # 很弱信号（<0.4）
+  
+  # 入场时机倍数
+  entry_timing_multipliers:
+    excellent: 1.1  # 优秀（>=70分）
+    good: 1.0  # 良好（>=60分）
+    normal: 0.9  # 一般（>=50分）
+    poor: 0.8  # 较差（<50分）
+  
+  # 波动率倍数（针对15分钟K线优化）
+  volatility_multipliers:
+    low: 1.2  # 低波动（<2%）
+    medium: 1.0  # 中波动（2-4%）
+    high: 0.8  # 高波动（4-6%）
+    very_high: 0.6  # 极高波动（>6%）
+  
+  # 趋势强度倍数
+  trend_strength_multipliers:
+    strong: 1.2  # 强趋势（强势上涨/下跌）
+    medium: 1.0  # 中等趋势（温和上涨/下跌）
+    weak: 0.8  # 震荡（震荡整理）
+  
+  # 回撤控制倍数
+  drawdown_multipliers:
+    normal: 1.0  # 正常（<5%）
+    small: 0.8  # 小幅回撤（5-10%）
+    medium: 0.6  # 中等回撤（10-15%）
+    large: 0.4  # 大幅回撤（15-20%）
+    critical: 0.2  # 严重回撤（>20%）
+  
+  # 风险限制
+  risk_limits:
+    max_risk_per_trade: 0.02  # 单笔最大风险2%
+    max_position_per_trade: 0.15  # 单次最大仓位15%（针对15分钟K线）
+    max_total_position: 0.60  # 组合最大仓位60%
+  
+  # 回撤保护
+  drawdown_protection:
+    enabled: true
+    max_drawdown: 0.20  # 最大回撤20%
+    pause_at_drawdown: 0.20  # 回撤20%时暂停交易
+  
+  # 动态仓位调整（保留原有功能）
+  volatility_targeting:
+    enabled: true
+    target_volatility: 0.20  # 目标波动率20%
+    min_volatility_coeff: 0.5
+    max_volatility_coeff: 1.5
+  
+  drawdown_control:
+    enabled: true
+    max_drawdown: 0.20  # 最大回撤20%
+    drawdown_levels:
+      - level: 0.05
+        position_coeff: 0.9
+      - level: 0.10
+        position_coeff: 0.6
+      - level: 0.15
+        position_coeff: 0.3
+      - level: 0.20
+        position_coeff: 0.1
+
+# 止损配置（参考ds-main：1%止损，3%止盈，1:3盈亏比）
+stop_loss:
+  enabled: true
+  default_stop_loss_pct: 0.01  # 使用ds-main的严格止损：1%（更严格的风险控制）
+  max_stop_loss_pct: 0.012  # 最大止损1.2%（严格控制风险）
+  
+  # 移动止损（像狼一样保护猎物）
+  trailing_stop:
+    enabled: true
+    activation_profit: 0.02  # 盈利2%后立即激活（快速保护利润）
+    trailing_pct: 0.01  # 追踪1%（紧密保护，获利就跑）
+  
+  # ATR止损
+  atr_stop:
+    enabled: true
+    atr_multiplier: 2.0  # 2倍ATR
+
+# VaR配置（放宽要求以允许更多交易）
+var:
+  enabled: true
+  target_var: 0.05  # 目标VaR 5%（放宽要求，允许更高风险）
+  confidence_level: 0.95  # 95%置信度
+  time_horizon: 1  # 1天
+
+# 风险限制（参考ds-main：更严格的风险控制）
+risk_limits:
+  max_loss_per_trade: 0.02  # 单笔最大亏损2%（严格风险控制）
+  max_loss_per_day: 0.02  # 单日最大亏损2%（参考ds-main）
+  max_loss_per_week: 0.10  # 单周最大亏损10%（严格风险控制）
+  max_consecutive_losses: 2  # 最大连续亏损次数（参考ds-main：2次亏损暂停）

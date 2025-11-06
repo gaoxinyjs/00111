@@ -1,0 +1,1267 @@
+2025-11-02 10:14:05 - check_config - ERROR - error:146 - 配置检查失败: [WinError 2] 系统找不到指定的文件。: 'C:\\Users\\28442\\.trading_system_key'
+2025-11-02 13:44:56 - main - ERROR - error:146 - OKX API请求失败: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/account/balance (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A0CB8C0>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:44:57 - main - ERROR - error:146 - OKX API请求失败: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/account/balance (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A15FD90>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:44:59 - main - ERROR - error:146 - OKX API请求失败: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/account/balance (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A19C910>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:45:03 - main - ERROR - error:146 - OKX API请求失败: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/account/balance (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A19CE10>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:45:03 - main - ERROR - error:146 - 账户初始化失败: OKX API请求失败，已重试3次: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/account/balance (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A19CE10>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:45:03 - main - ERROR - error:146 - OKX API请求失败: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/market/ticker?instId=BTC-USDT (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A19D090>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:45:04 - main - ERROR - error:146 - OKX API请求失败: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/market/ticker?instId=BTC-USDT (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A19D590>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:45:06 - main - ERROR - error:146 - OKX API请求失败: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/market/ticker?instId=BTC-USDT (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A19D950>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:45:10 - main - ERROR - error:146 - OKX API请求失败: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/market/ticker?instId=BTC-USDT (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A19DD10>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:45:10 - main - ERROR - error:146 - 采集行情数据失败 BTC-USDT: OKX API请求失败，已重试3次: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/market/ticker?instId=BTC-USDT (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A19DD10>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:45:10 - main - ERROR - error:146 - 采集BTC-USDT行情失败: 采集行情数据失败: OKX API请求失败，已重试3次: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/market/ticker?instId=BTC-USDT (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A19DD10>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:45:10 - main - ERROR - error:146 - OKX API请求失败: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/market/ticker?instId=ETH-USDT (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A19E0D0>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:45:11 - main - ERROR - error:146 - OKX API请求失败: HTTPSConnectionPool(host='www.okx.com', port=443): Max retries exceeded with url: /api/v5/market/ticker?instId=ETH-USDT (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000002BB6A19E490>: Failed to resolve 'www.okx.com' ([Errno 11004] getaddrinfo failed)"))
+2025-11-02 13:48:02 - main - ERROR - error:146 - OKX API请求失败: 401 Client Error: Unauthorized for url: https://www.okx.com/api/v5/account/balance
+2025-11-02 13:48:04 - main - ERROR - error:146 - OKX API请求失败: 401 Client Error: Unauthorized for url: https://www.okx.com/api/v5/account/balance
+2025-11-02 13:48:07 - main - ERROR - error:146 - OKX API请求失败: 401 Client Error: Unauthorized for url: https://www.okx.com/api/v5/account/balance
+2025-11-02 13:48:11 - main - ERROR - error:146 - OKX API请求失败: 401 Client Error: Unauthorized for url: https://www.okx.com/api/v5/account/balance
+2025-11-02 13:48:11 - main - ERROR - error:146 - 账户初始化失败: OKX API请求失败，已重试3次: 401 Client Error: Unauthorized for url: https://www.okx.com/api/v5/account/balance
+2025-11-02 13:48:17 - main - ERROR - error:146 - 生成AI信号失败 BTC-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 13:48:17 - main - ERROR - error:146 - 生成AI信号失败 ETH-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 13:48:17 - main - ERROR - error:146 - OKX API请求失败: 401 Client Error: Unauthorized for url: https://www.okx.com/api/v5/account/positions
+2025-11-02 13:48:19 - main - ERROR - error:146 - OKX API请求失败: 401 Client Error: Unauthorized for url: https://www.okx.com/api/v5/account/positions
+2025-11-02 13:50:46 - main - ERROR - error:146 - OKX API认证失败 (401): Your IP 154.64.226.44 is not included in your API key's cdd0aef7-ee09-439e-a106-a1e436374473 IP whitelist.
+2025-11-02 13:50:46 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-02 13:50:46 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-02 13:50:46 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-02 13:50:46 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-02 13:50:46 - main - ERROR - error:146 - 账户初始化失败: OKX API认证失败: Your IP 154.64.226.44 is not included in your API key's cdd0aef7-ee09-439e-a106-a1e436374473 IP whitelist.. 请检查API密钥配置
+2025-11-02 13:50:49 - main - ERROR - error:146 - 生成AI信号失败 BTC-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 13:50:49 - main - ERROR - error:146 - 生成AI信号失败 ETH-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 13:50:50 - main - ERROR - error:146 - OKX API认证失败 (401): Your IP 154.64.226.44 is not included in your API key's cdd0aef7-ee09-439e-a106-a1e436374473 IP whitelist.
+2025-11-02 13:50:50 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-02 13:50:50 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-02 13:50:50 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-02 13:50:50 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-02 13:50:50 - main - ERROR - error:146 - 更新持仓失败: OKX API认证失败: Your IP 154.64.226.44 is not included in your API key's cdd0aef7-ee09-439e-a106-a1e436374473 IP whitelist.. 请检查API密钥配置
+2025-11-02 19:36:30 - main - ERROR - error:146 - OKX API认证失败 (401): APIKey does not match current environment.
+2025-11-02 19:36:30 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-02 19:36:30 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-02 19:36:30 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-02 19:36:30 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-02 19:36:30 - main - ERROR - error:146 - 账户初始化失败: OKX API认证失败: APIKey does not match current environment.. 请检查API密钥配置
+2025-11-02 19:36:32 - main - ERROR - error:146 - 生成AI信号失败 BTC-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 19:36:32 - main - ERROR - error:146 - 生成AI信号失败 ETH-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 19:36:32 - main - ERROR - error:146 - OKX API认证失败 (401): APIKey does not match current environment.
+2025-11-02 19:36:32 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-02 19:36:32 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-02 19:36:32 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-02 19:36:32 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-02 19:36:32 - main - ERROR - error:146 - 更新持仓失败: OKX API认证失败: APIKey does not match current environment.. 请检查API密钥配置
+2025-11-02 19:36:37 - main - ERROR - error:146 - OKX API认证失败 (401): APIKey does not match current environment.
+2025-11-02 19:36:37 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-02 19:36:37 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-02 19:36:37 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-02 19:36:37 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-02 19:36:37 - main - ERROR - error:146 - 账户初始化失败: OKX API认证失败: APIKey does not match current environment.. 请检查API密钥配置
+2025-11-02 19:36:39 - main - ERROR - error:146 - 生成AI信号失败 BTC-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 19:36:39 - main - ERROR - error:146 - 生成AI信号失败 ETH-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 19:36:39 - main - ERROR - error:146 - OKX API认证失败 (401): APIKey does not match current environment.
+2025-11-02 19:36:39 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-02 19:36:39 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-02 19:36:39 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-02 19:36:39 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-02 19:36:39 - main - ERROR - error:146 - 更新持仓失败: OKX API认证失败: APIKey does not match current environment.. 请检查API密钥配置
+2025-11-02 19:38:32 - main - ERROR - error:146 - OKX API认证失败 (401): APIKey does not match current environment.
+2025-11-02 19:38:32 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-02 19:38:32 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-02 19:38:32 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-02 19:38:32 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-02 19:38:32 - main - ERROR - error:146 - 账户初始化失败: OKX API认证失败: APIKey does not match current environment.. 请检查API密钥配置
+2025-11-02 19:38:35 - main - ERROR - error:146 - 生成AI信号失败 BTC-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 19:38:35 - main - ERROR - error:146 - 生成AI信号失败 ETH-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 19:38:35 - main - ERROR - error:146 - OKX API认证失败 (401): APIKey does not match current environment.
+2025-11-02 19:38:35 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-02 19:38:35 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-02 19:38:35 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-02 19:38:35 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-02 19:38:35 - main - ERROR - error:146 - 更新持仓失败: OKX API认证失败: APIKey does not match current environment.. 请检查API密钥配置
+2025-11-02 19:40:52 - main - ERROR - error:146 - OKX API认证失败 (401): APIKey does not match current environment.
+2025-11-02 19:40:52 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-02 19:40:52 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-02 19:40:52 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-02 19:40:52 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-02 19:40:52 - main - ERROR - error:146 - 账户初始化失败: OKX API认证失败: APIKey does not match current environment.. 请检查API密钥配置
+2025-11-02 19:40:54 - main - ERROR - error:146 - 生成AI信号失败 BTC-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 19:40:54 - main - ERROR - error:146 - 生成AI信号失败 ETH-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 19:40:55 - main - ERROR - error:146 - OKX API认证失败 (401): APIKey does not match current environment.
+2025-11-02 19:40:55 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-02 19:40:55 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-02 19:40:55 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-02 19:40:55 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-02 19:40:55 - main - ERROR - error:146 - 更新持仓失败: OKX API认证失败: APIKey does not match current environment.. 请检查API密钥配置
+2025-11-02 19:42:43 - main - ERROR - error:146 - 生成AI信号失败 BTC-USDT: Object of type Timestamp is not JSON serializable
+2025-11-02 19:42:43 - main - ERROR - error:146 - 生成AI信号失败 ETH-USDT: Object of type Timestamp is not JSON serializable
+2025-11-03 00:02:02 - main - ERROR - error:146 - 提交订单失败 MINA-USDT-SWAP_sell_1762099322479: OKX API错误 [1]: All operations failed
+2025-11-03 00:02:02 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 00:02:02 - main - ERROR - error:146 - 执行交易失败 MINA-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 00:10:00 - main - ERROR - error:146 - OKX API认证失败 (401): Invalid Sign
+2025-11-03 00:10:00 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-03 00:10:00 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-03 00:10:00 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-03 00:10:00 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-03 00:10:00 - main - ERROR - error:146 - 计算交易数量失败: OKX API认证失败: Invalid Sign. 请检查API密钥配置
+2025-11-03 00:10:01 - main - ERROR - error:146 - OKX API认证失败 (401): Invalid Sign
+2025-11-03 00:10:01 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-03 00:10:01 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-03 00:10:01 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-03 00:10:01 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-03 00:10:01 - main - ERROR - error:146 - 计算交易数量失败: OKX API认证失败: Invalid Sign. 请检查API密钥配置
+2025-11-03 00:10:59 - main - ERROR - error:146 - OKX API认证失败 (401): Invalid Sign
+2025-11-03 00:10:59 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-03 00:10:59 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-03 00:10:59 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-03 00:10:59 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-03 00:10:59 - main - ERROR - error:146 - 计算交易数量失败: OKX API认证失败: Invalid Sign. 请检查API密钥配置
+2025-11-03 00:11:00 - main - ERROR - error:146 - OKX API认证失败 (401): Invalid Sign
+2025-11-03 00:11:00 - main - ERROR - error:146 - 请检查以下配置：
+2025-11-03 00:11:00 - main - ERROR - error:146 -   - API Key: 已配置
+2025-11-03 00:11:00 - main - ERROR - error:146 -   - Secret Key: 已配置
+2025-11-03 00:11:00 - main - ERROR - error:146 -   - Passphrase: 已配置
+2025-11-03 00:11:00 - main - ERROR - error:146 - 计算交易数量失败: OKX API认证失败: Invalid Sign. 请检查API密钥配置
+2025-11-03 00:34:34 - main - ERROR - error:146 - 提交订单失败 BCH-USDT-SWAP_sell_1762101274609: OKX API错误 [1]: All operations failed
+2025-11-03 00:34:34 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 00:34:34 - main - ERROR - error:146 - 执行交易失败 BCH-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 00:35:38 - main - ERROR - error:146 - 提交订单失败 BCH-USDT-SWAP_sell_1762101338112: OKX API错误 [1]: All operations failed
+2025-11-03 00:35:38 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 00:35:38 - main - ERROR - error:146 - 执行交易失败 BCH-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 00:37:51 - main - ERROR - error:146 - 提交订单失败 BCH-USDT-SWAP_sell_1762101471200: OKX API错误 [1]: All operations failed
+2025-11-03 00:37:51 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 00:37:51 - main - ERROR - error:146 - 执行交易失败 BCH-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 00:40:01 - test_order_api - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-03 00:40:01 - test_order_api - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51121', 'sMsg': 'Order quantity must be a multiple of the lot size.', 'tag': '', 'ts': '1762101601168'}]
+2025-11-03 00:40:01 - test_order_api - ERROR - error:146 - 具体错误: sCode=51121, sMsg=Order quantity must be a multiple of the lot size.
+2025-11-03 00:40:10 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-03 00:40:10 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51121', 'sMsg': 'Order quantity must be a multiple of the lot size.', 'tag': '', 'ts': '1762101610367'}]
+2025-11-03 00:40:10 - main - ERROR - error:146 - 具体错误: sCode=51121, sMsg=Order quantity must be a multiple of the lot size.
+2025-11-03 00:40:10 - main - ERROR - error:146 - 提交订单失败 BCH-USDT-SWAP_sell_1762101610115: OKX API错误 [1]: All operations failed
+2025-11-03 00:40:10 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 00:40:10 - main - ERROR - error:146 - 执行交易失败 BCH-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 00:41:03 - okx_client - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/public/instruments?instType=BCH-USDT-SWAP
+2025-11-03 00:41:04 - okx_client - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/public/instruments?instType=BCH-USDT-SWAP
+2025-11-03 00:41:06 - okx_client - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/public/instruments?instType=BCH-USDT-SWAP
+2025-11-03 00:41:11 - okx_client - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/public/instruments?instType=BCH-USDT-SWAP
+2025-11-03 00:41:34 - okx_client - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/public/instruments?instType=BCH-USDT-SWAP
+2025-11-03 00:41:36 - okx_client - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/public/instruments?instType=BCH-USDT-SWAP
+2025-11-03 00:41:38 - okx_client - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/public/instruments?instType=BCH-USDT-SWAP
+2025-11-03 00:41:42 - okx_client - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/public/instruments?instType=BCH-USDT-SWAP
+2025-11-03 00:42:21 - test_order_api - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-03 00:42:21 - test_order_api - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51121', 'sMsg': 'Order quantity must be a multiple of the lot size.', 'tag': '', 'ts': '1762101741394'}]
+2025-11-03 00:42:21 - test_order_api - ERROR - error:146 - 具体错误: sCode=51121, sMsg=Order quantity must be a multiple of the lot size.
+2025-11-03 00:42:46 - test_order_api - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-03 00:42:46 - test_order_api - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': '', 'ts': '1762101766379'}]
+2025-11-03 00:42:46 - test_order_api - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-03 00:42:53 - test_order_api - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-03 00:42:53 - test_order_api - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': '', 'ts': '1762101773717'}]
+2025-11-03 00:42:53 - test_order_api - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-03 00:43:14 - test_order_api - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-03 00:43:14 - test_order_api - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': '', 'ts': '1762101794853'}]
+2025-11-03 00:43:14 - test_order_api - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-03 00:44:49 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:44:50 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:44:53 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:44:57 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:44:57 - main - ERROR - error:146 - 更新订单状态失败 BCH-USDT-SWAP_sell_1762101889005: OKX API请求失败，已重试3次: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:44:58 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:01 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:03 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:08 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:08 - main - ERROR - error:146 - 更新订单状态失败 BCH-USDT-SWAP_sell_1762101889005: OKX API请求失败，已重试3次: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:09 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:10 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:12 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:17 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:17 - main - ERROR - error:146 - 更新订单状态失败 BCH-USDT-SWAP_sell_1762101889005: OKX API请求失败，已重试3次: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:18 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:19 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:22 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:26 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:26 - main - ERROR - error:146 - 更新订单状态失败 BCH-USDT-SWAP_sell_1762101889005: OKX API请求失败，已重试3次: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101889005
+2025-11-03 00:45:26 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:28 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:30 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:34 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:34 - main - ERROR - error:146 - 更新订单状态失败 BCH-USDT-SWAP_sell_1762101926117: OKX API请求失败，已重试3次: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:36 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:37 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:39 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:43 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:43 - main - ERROR - error:146 - 更新订单状态失败 BCH-USDT-SWAP_sell_1762101926117: OKX API请求失败，已重试3次: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:45 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:46 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:48 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:53 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:53 - main - ERROR - error:146 - 更新订单状态失败 BCH-USDT-SWAP_sell_1762101926117: OKX API请求失败，已重试3次: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:54 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:55 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:45:58 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:46:02 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 00:46:02 - main - ERROR - error:146 - 更新订单状态失败 BCH-USDT-SWAP_sell_1762101926117: OKX API请求失败，已重试3次: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order?instId=BCH-USDT-SWAP&ordId=BCH-USDT-SWAP_sell_1762101926117
+2025-11-03 01:01:28 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-03 01:01:28 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51121', 'sMsg': 'Order quantity must be a multiple of the lot size.', 'tag': '', 'ts': '1762102888499'}]
+2025-11-03 01:01:28 - main - ERROR - error:146 - 具体错误: sCode=51121, sMsg=Order quantity must be a multiple of the lot size.
+2025-11-03 01:01:28 - main - ERROR - error:146 - 提交订单失败 BCH-USDT-SWAP_sell_1762102888392: OKX API错误 [1]: All operations failed
+2025-11-03 01:01:28 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 01:01:28 - main - ERROR - error:146 - 执行交易失败 BCH-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 01:04:16 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-03 01:04:16 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51121', 'sMsg': 'Order quantity must be a multiple of the lot size.', 'tag': '', 'ts': '1762103056701'}]
+2025-11-03 01:04:16 - main - ERROR - error:146 - 具体错误: sCode=51121, sMsg=Order quantity must be a multiple of the lot size.
+2025-11-03 01:04:16 - main - ERROR - error:146 - 提交订单失败 BCH-USDT-SWAP_sell_1762103056589: OKX API错误 [1]: All operations failed
+2025-11-03 01:04:16 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 01:04:16 - main - ERROR - error:146 - 执行交易失败 BCH-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 01:22:07 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 01:25:01 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 01:37:33 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 01:40:29 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 01:52:59 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 01:55:56 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 02:08:26 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 02:11:22 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 02:23:52 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 02:26:38 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 02:39:18 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 02:42:00 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 02:54:44 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 02:57:25 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 03:10:10 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 03:12:50 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 03:25:36 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 03:28:17 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 03:40:52 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 03:43:44 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 03:56:05 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 03:59:10 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 04:11:17 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 04:14:25 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 04:26:39 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 04:29:47 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 04:42:02 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 04:45:10 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 04:57:16 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 05:00:34 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 05:12:37 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 05:15:57 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 05:27:59 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 05:31:20 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 05:43:23 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 05:46:44 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 05:58:47 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 06:01:58 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 06:14:01 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 06:17:09 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 06:29:13 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 06:32:32 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 06:44:34 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 06:47:57 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 06:59:59 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 07:03:12 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 07:15:13 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 07:18:34 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 07:30:36 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 07:33:46 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 07:45:59 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 07:49:11 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 08:01:12 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 08:04:22 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 08:16:25 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 08:19:35 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 08:31:39 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 08:34:48 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 08:46:54 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 08:50:04 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 09:02:09 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 09:05:20 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 09:17:40 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 09:20:36 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 09:35:52 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 09:51:06 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 10:06:23 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 10:21:39 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 10:36:53 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 10:52:23 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 11:07:53 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 11:23:11 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 11:38:38 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 11:53:54 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 12:09:21 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 12:24:47 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 12:40:14 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 12:55:29 - main - ERROR - error:146 - [DeepSeek持仓分析] 交易对: BCH-USDT-SWAP - 分析失败: 'DeepSeekClient' object has no attribute '_call_api'
+2025-11-03 13:48:09 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 13:48:10 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 'DeepSeekClient' object has no attribute 'optimization_guidelines'
+2025-11-03 13:49:09 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 13:50:53 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 14:04:00 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 14:07:58 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 14:08:28 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 14:09:29 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 14:13:04 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 14:17:05 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 14:21:04 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 14:25:04 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 14:27:11 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: 'TradingEngine' object has no attribute 'market_data_cache'
+2025-11-03 14:29:02 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 14:32:58 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 14:36:51 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 14:40:52 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 14:44:49 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 14:45:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 14:49:19 - main - ERROR - error:146 - 收集SOL-USDT-SWAP市场数据失败: name 'symbol_market_data' is not defined
+2025-11-03 15:14:43 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:15:16 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:15:23 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:15:50 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:15:55 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:16:30 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:19:29 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:20:31 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:21:04 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:24:09 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:24:41 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:25:07 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:25:16 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:25:40 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:26:14 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:26:24 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:26:52 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:26:52 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:26:52 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:26:57 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:27:31 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:27:39 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:27:39 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:27:39 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:29:42 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:29:44 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:29:57 - main - ERROR - error:146 - DeepSeek API请求失败: 500 Server Error: Internal Server Error for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:29:59 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:30:11 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: 'NoneType' object has no attribute 'get'
+2025-11-03 15:30:11 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: 'NoneType' object has no attribute 'get'
+2025-11-03 15:30:15 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: 'NoneType' object has no attribute 'get'
+2025-11-03 15:30:15 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: 'NoneType' object has no attribute 'get'
+2025-11-03 15:32:44 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out. (read timeout=30)
+2025-11-03 15:33:16 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out. (read timeout=30)
+2025-11-03 15:33:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out. (read timeout=30)
+2025-11-03 15:33:51 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out. (read timeout=30)
+2025-11-03 15:34:20 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out. (read timeout=30)
+2025-11-03 15:34:29 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out. (read timeout=30)
+2025-11-03 15:34:29 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out. (read timeout=30)
+2025-11-03 15:34:29 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out. (read timeout=30)
+2025-11-03 15:34:54 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out. (read timeout=30)
+2025-11-03 15:35:33 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:35:33 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:35:33 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:36:03 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:36:32 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:36:36 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:37:05 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:37:09 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:37:10 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:37:47 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:37:47 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:37:47 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:37:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:37:48 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:37:48 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:40:21 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:40:52 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:40:53 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:40:55 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:41:28 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:41:29 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:42:06 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:42:06 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:42:06 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:42:08 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:42:08 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:42:08 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:42:37 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:43:09 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:43:13 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:43:22 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:43:22 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:43:22 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:45:25 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:45:27 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:45:32 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:45:40 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:45:40 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:45:40 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:45:41 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:45:41 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:45:43 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:46:14 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:46:17 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:46:26 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:46:26 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:46:26 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:46:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:47:26 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:47:26 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:47:26 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:47:27 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:47:59 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:48:29 - main - ERROR - error:146 - DeepSeek API请求失败: 503 Server Error: Service Unavailable for url: https://api.deepseek.com/v1/chat/completions
+2025-11-03 15:48:34 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:49:01 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:49:12 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:49:12 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:49:12 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:49:36 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:50:14 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:50:14 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 15:50:14 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 16:01:41 - main - ERROR - error:146 - 生成交易决策失败 SOL-USDT-SWAP: 'NoneType' object has no attribute 'type'
+2025-11-03 16:01:41 - main - ERROR - error:146 - 生成SOL-USDT-SWAP决策失败: 生成交易决策失败: 'NoneType' object has no attribute 'type'
+2025-11-03 16:23:55 - main - ERROR - error:146 - DeepSeek API请求失败: ("Connection broken: InvalidChunkLength(got length b'', 0 bytes read)", InvalidChunkLength(got length b'', 0 bytes read))
+2025-11-03 16:59:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 17:19:54 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 17:23:04 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 17:26:12 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 17:29:22 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 17:32:32 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 17:35:38 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 17:38:45 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 17:41:51 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 17:44:56 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 17:48:02 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 17:51:09 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 17:54:18 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 17:57:27 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:00:32 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:03:41 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:06:53 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:10:50 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:13:53 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:16:59 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:20:06 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:22:46 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:25:49 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:28:55 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:32:01 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:35:07 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:38:10 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:44:15 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:50:22 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:53:29 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:56:35 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 18:59:45 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:02:54 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:06:03 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:09:20 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:10:18 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-03 19:12:42 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:15:58 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:19:08 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:25:13 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:28:20 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:31:23 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:34:27 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:37:36 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:40:39 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:43:46 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:46:50 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:49:56 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:53:02 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:56:13 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 19:59:21 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 20:02:26 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 20:05:37 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 20:08:42 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 20:11:52 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 20:15:00 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 20:18:21 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 20:21:24 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 20:24:28 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 20:26:03 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 20:47:08 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 20:53:43 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 21:08:25 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 21:08:28 - main - ERROR - error:146 - 更新持仓失败: 'list' object has no attribute 'get'
+2025-11-03 21:10:50 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 21:21:55 - main - ERROR - error:146 - 检查仓位调整失败 DOGE-USDT-SWAP: name 'stop_loss_price' is not defined
+2025-11-03 21:21:55 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 21:22:08 - main - ERROR - error:146 - 检查仓位调整失败 DOGE-USDT-SWAP: name 'stop_loss_price' is not defined
+2025-11-03 21:25:13 - main - ERROR - error:146 - 检查仓位调整失败 DOGE-USDT-SWAP: name 'stop_loss_price' is not defined
+2025-11-03 21:25:25 - main - ERROR - error:146 - 检查仓位调整失败 DOGE-USDT-SWAP: name 'stop_loss_price' is not defined
+2025-11-03 21:28:28 - main - ERROR - error:146 - 检查仓位调整失败 DOGE-USDT-SWAP: name 'stop_loss_price' is not defined
+2025-11-03 21:28:38 - main - ERROR - error:146 - 检查仓位调整失败 DOGE-USDT-SWAP: name 'stop_loss_price' is not defined
+2025-11-03 21:29:58 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 21:46:31 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 21:46:33 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:35 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:36 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:37 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:38 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:40 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:41 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:42 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:43 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:45 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:46 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:47 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:48 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:50 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:51 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:52 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:53 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:54 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:56 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:57 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:58 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:46:59 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:47:01 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:47:02 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:47:03 - main - ERROR - error:146 - 更新订单状态失败 3009000181503729664: could not convert string to float: ''
+2025-11-03 21:54:18 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 21:57:52 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 22:01:20 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 22:05:32 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 22:10:05 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 22:10:07 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-03 22:10:07 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '54070', 'sMsg': 'The current function is not supported. Please update to the latest app version if using the app, or use the attachAlgoOrds array to place orders via Open API. ', 'tag': '', 'ts': '1762179006975'}]
+2025-11-03 22:10:07 - main - ERROR - error:146 - 具体错误: sCode=54070, sMsg=The current function is not supported. Please update to the latest app version if using the app, or use the attachAlgoOrds array to place orders via Open API. 
+2025-11-03 22:10:07 - main - ERROR - error:146 - 提交订单失败 DOGE-USDT-SWAP_sell_1762179006799: OKX API错误 [1]: All operations failed
+2025-11-03 22:10:07 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 22:10:07 - main - ERROR - error:146 - 执行交易失败 DOGE-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 22:13:07 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 22:13:08 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-03 22:13:08 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '54070', 'sMsg': 'The current function is not supported. Please update to the latest app version if using the app, or use the attachAlgoOrds array to place orders via Open API. ', 'tag': '', 'ts': '1762179188966'}]
+2025-11-03 22:13:08 - main - ERROR - error:146 - 具体错误: sCode=54070, sMsg=The current function is not supported. Please update to the latest app version if using the app, or use the attachAlgoOrds array to place orders via Open API. 
+2025-11-03 22:13:08 - main - ERROR - error:146 - 提交订单失败 DOGE-USDT-SWAP_sell_1762179188827: OKX API错误 [1]: All operations failed
+2025-11-03 22:13:08 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 22:13:08 - main - ERROR - error:146 - 执行交易失败 DOGE-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 22:16:21 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-03 22:16:23 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-03 22:16:23 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51049', 'sMsg': 'Your SL price should be higher than the primary order price.', 'tag': '', 'ts': '1762179383115'}]
+2025-11-03 22:16:23 - main - ERROR - error:146 - 具体错误: sCode=51049, sMsg=Your SL price should be higher than the primary order price.
+2025-11-03 22:16:23 - main - ERROR - error:146 - 提交订单失败 DOGE-USDT-SWAP_sell_1762179382883: OKX API错误 [1]: All operations failed
+2025-11-03 22:16:23 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-03 22:16:23 - main - ERROR - error:146 - 执行交易失败 DOGE-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-04 06:06:15 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 08:14:42 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 08:30:45 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 08:31:17 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 09:03:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 09:08:19 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 09:29:27 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 09:37:58 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 09:42:28 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 09:43:01 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 09:51:35 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:03:36 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:08:09 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:08:42 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:09:16 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:10:24 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:10:57 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:11:31 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:12:09 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:12:09 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:12:09 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:15:43 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:20:17 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:21:19 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:28:55 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:29:27 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:30:02 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:30:40 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:30:40 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:30:40 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:34:44 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:35:16 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:35:31 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 10:35:33 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-04 10:35:33 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '54070', 'sMsg': 'The current function is not supported. Please update to the latest app version if using the app, or use the attachAlgoOrds array to place orders via Open API. ', 'tag': '', 'ts': '1762223733271'}]
+2025-11-04 10:35:33 - main - ERROR - error:146 - 具体错误: sCode=54070, sMsg=The current function is not supported. Please update to the latest app version if using the app, or use the attachAlgoOrds array to place orders via Open API. 
+2025-11-04 10:35:33 - main - ERROR - error:146 - 提交订单失败 DOGE-USDT-SWAP_sell_1762223732954: OKX API错误 [1]: All operations failed
+2025-11-04 10:35:33 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-04 10:35:33 - main - ERROR - error:146 - 执行交易失败 DOGE-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-04 10:38:39 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 10:38:42 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-04 10:38:42 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51000', 'sMsg': 'Parameter algoClOrdId error', 'tag': '', 'ts': '1762223922480'}]
+2025-11-04 10:38:42 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter algoClOrdId error
+2025-11-04 10:38:42 - main - ERROR - error:146 - 提交订单失败 DOGE-USDT-SWAP_sell_1762223921984: OKX API错误 [1]: All operations failed
+2025-11-04 10:38:42 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-04 10:38:42 - main - ERROR - error:146 - 执行交易失败 DOGE-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-04 10:41:47 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 10:41:48 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-04 10:41:48 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51000', 'sMsg': 'Parameter algoClOrdId error', 'tag': '', 'ts': '1762224108725'}]
+2025-11-04 10:41:48 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter algoClOrdId error
+2025-11-04 10:41:48 - main - ERROR - error:146 - 提交订单失败 DOGE-USDT-SWAP_sell_1762224108552: OKX API错误 [1]: All operations failed
+2025-11-04 10:41:48 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-04 10:41:48 - main - ERROR - error:146 - 执行交易失败 DOGE-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-04 10:43:24 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:43:56 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:44:30 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:45:09 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:45:09 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:45:09 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:45:24 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 10:45:26 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-04 10:45:26 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51082', 'sMsg': 'TP trigger prices (tpOrdPx) in one order with multiple TPs must be market prices.', 'tag': '', 'ts': '1762224326434'}]
+2025-11-04 10:45:26 - main - ERROR - error:146 - 具体错误: sCode=51082, sMsg=TP trigger prices (tpOrdPx) in one order with multiple TPs must be market prices.
+2025-11-04 10:45:26 - main - ERROR - error:146 - 提交订单失败 DOGE-USDT-SWAP_sell_1762224326221: OKX API错误 [1]: All operations failed
+2025-11-04 10:45:26 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-04 10:45:26 - main - ERROR - error:146 - 执行交易失败 DOGE-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-04 10:48:03 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 10:48:04 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 10:48:04 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 10:48:04 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 10:48:04 - main - ERROR - error:146 - 设置止损订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 10:48:05 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 10:48:05 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 10:48:05 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 10:48:05 - main - ERROR - error:146 - 设置止盈订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 10:51:42 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 10:51:44 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 10:51:44 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 10:51:44 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 10:51:44 - main - ERROR - error:146 - 设置止损订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 10:51:44 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 10:51:44 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 10:51:44 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 10:51:44 - main - ERROR - error:146 - 设置止盈订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 10:52:43 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 10:55:18 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 10:55:21 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 10:55:21 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 10:55:21 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 10:55:21 - main - ERROR - error:146 - 设置止损订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 10:55:21 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 10:55:21 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 10:55:21 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 10:55:21 - main - ERROR - error:146 - 设置止盈订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 10:59:00 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 10:59:02 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 10:59:02 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 10:59:02 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 10:59:02 - main - ERROR - error:146 - 设置止损订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 10:59:03 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 10:59:03 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 10:59:03 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 10:59:03 - main - ERROR - error:146 - 设置止盈订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 11:02:39 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 11:02:41 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 11:02:41 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 11:02:41 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 11:02:41 - main - ERROR - error:146 - 设置止损订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 11:02:41 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 11:02:41 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 11:02:41 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 11:02:41 - main - ERROR - error:146 - 设置止盈订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 11:04:46 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 11:06:20 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 11:06:22 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 11:06:22 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 11:06:22 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 11:06:22 - main - ERROR - error:146 - 设置止损订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 11:06:22 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 11:06:22 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 11:06:22 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 11:06:22 - main - ERROR - error:146 - 设置止盈订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 11:10:14 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 11:10:17 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 11:10:17 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 11:10:17 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 11:10:17 - main - ERROR - error:146 - 设置止损订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 11:10:17 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 11:10:17 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 11:10:17 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 11:10:17 - main - ERROR - error:146 - 设置止盈订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 11:14:06 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 11:14:08 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 11:14:08 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 11:14:08 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 11:14:08 - main - ERROR - error:146 - 设置止损订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 11:14:08 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 11:14:08 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 11:14:08 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 11:14:08 - main - ERROR - error:146 - 设置止盈订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 11:16:20 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 11:18:02 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 11:18:04 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 11:18:04 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 11:18:04 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 11:18:04 - main - ERROR - error:146 - 设置止损订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 11:18:04 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-04 11:18:04 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-04 11:18:04 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-04 11:18:04 - main - ERROR - error:146 - 设置止盈订单失败 DOGE-USDT-SWAP: OKX API错误 [1]: 
+2025-11-04 11:20:51 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 11:24:43 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 11:28:21 - main - ERROR - error:146 - DeepSeek API请求失败 (第1次尝试): ("Connection broken: InvalidChunkLength(got length b'', 0 bytes read)", InvalidChunkLength(got length b'', 0 bytes read))
+2025-11-04 11:29:02 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 11:32:57 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 11:44:00 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 12:06:26 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 12:10:52 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 12:11:25 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 12:11:59 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 12:12:38 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 12:12:38 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 12:12:38 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 14:17:15 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 14:55:50 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 15:20:19 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 15:24:23 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 15:24:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 15:25:21 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 15:27:59 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 15:49:59 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 15:54:30 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 15:56:50 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 16:00:18 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 16:00:21 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order
+2025-11-04 16:00:23 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order
+2025-11-04 16:00:26 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order
+2025-11-04 16:00:31 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order
+2025-11-04 16:00:31 - main - ERROR - error:146 - 提交订单失败 DOGE-USDT-SWAP_sell_1762243219931: OKX API请求失败，已重试3次: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order
+2025-11-04 16:00:31 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API请求失败，已重试3次: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order
+2025-11-04 16:00:31 - main - ERROR - error:146 - 执行交易失败 DOGE-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API请求失败，已重试3次: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/order
+2025-11-04 16:04:19 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 16:04:20 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-04 16:04:20 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51049', 'sMsg': 'Your SL price should be higher than the primary order price.', 'tag': '', 'ts': '1762243460574'}]
+2025-11-04 16:04:20 - main - ERROR - error:146 - 具体错误: sCode=51049, sMsg=Your SL price should be higher than the primary order price.
+2025-11-04 16:04:20 - main - ERROR - error:146 - 提交订单失败 DOGE-USDT-SWAP_sell_1762243460401: OKX API错误 [1]: All operations failed
+2025-11-04 16:04:20 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-04 16:04:20 - main - ERROR - error:146 - 执行交易失败 DOGE-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-04 16:06:16 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:06:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:07:51 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:07:52 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-04 16:23:56 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:50:04 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:50:36 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:51:11 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:51:49 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:51:49 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:51:49 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:55:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:56:20 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:56:55 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:57:33 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:57:33 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 16:57:33 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 17:01:06 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 17:02:08 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 17:06:10 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 17:07:10 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 17:07:42 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 17:12:20 - main - ERROR - error:146 - 生成AI信号失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+2025-11-04 17:15:42 - main - ERROR - error:146 - 生成AI信号失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+2025-11-04 17:15:42 - main - ERROR - error:146 - 生成AI信号失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+2025-11-04 17:18:38 - main - ERROR - error:146 - 生成AI信号失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+2025-11-04 17:18:38 - main - ERROR - error:146 - 生成AI信号失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+2025-11-04 17:20:24 - main - ERROR - error:146 - 生成AI信号失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+2025-11-04 17:20:24 - main - ERROR - error:146 - 生成AI信号失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+2025-11-04 17:22:55 - main - ERROR - error:146 - 生成AI信号失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+2025-11-04 17:22:55 - main - ERROR - error:146 - 生成AI信号失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+2025-11-04 17:26:31 - main - ERROR - error:146 - [DeepSeek信号生成] 分析市场失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+Traceback (most recent call last):
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 1489, in generate_signal
+    analysis = self.analyze_market(market_data, signal_context)
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 1319, in analyze_market
+    prompt = self._build_prompt(market_data, signal_context)
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 358, in _build_prompt
+    {json.dumps(self._serialize_for_json(market_data.get('funding', {{}})), indent=2, ensure_ascii=False)}
+TypeError: unhashable type: 'dict'
+2025-11-04 17:26:31 - main - ERROR - error:146 - 生成AI信号失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+2025-11-04 17:26:31 - main - ERROR - error:146 - [DeepSeek信号生成] 分析市场失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+Traceback (most recent call last):
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 1489, in generate_signal
+    analysis = self.analyze_market(market_data, signal_context)
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 1319, in analyze_market
+    prompt = self._build_prompt(market_data, signal_context)
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 358, in _build_prompt
+    {json.dumps(self._serialize_for_json(market_data.get('funding', {{}})), indent=2, ensure_ascii=False)}
+TypeError: unhashable type: 'dict'
+2025-11-04 17:26:31 - main - ERROR - error:146 - 生成AI信号失败 DOGE-USDT-SWAP: unhashable type: 'dict'
+2025-11-04 17:29:35 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-04 17:29:35 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-04 17:33:13 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-04 17:33:13 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-04 17:49:18 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-04 17:49:18 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-04 18:20:55 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-04 18:20:55 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-04 18:53:03 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-04 18:53:03 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-04 20:11:36 - main - ERROR - error:146 - DeepSeek API请求失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2025-11-04 20:29:11 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-04 20:29:11 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-04 20:53:04 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-04 21:53:15 - main - ERROR - error:146 - DeepSeek API请求失败: 502 Server Error: Bad Gateway for url: https://api.deepseek.com/v1/chat/completions
+2025-11-04 22:01:15 - main - ERROR - error:146 - DeepSeek API请求失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2025-11-04 22:02:42 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-04 22:02:42 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-04 22:10:51 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-04 22:10:51 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-04 22:16:22 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-04 22:16:22 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-04 22:21:06 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-04 22:21:06 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-04 22:24:44 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-04 22:24:44 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-04 23:04:01 - main - ERROR - error:146 - DeepSeek API请求失败: 502 Server Error: Bad Gateway for url: https://api.deepseek.com/v1/chat/completions
+2025-11-05 08:23:22 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:38:55 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:42:59 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:44:01 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:44:33 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:49:10 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:49:43 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:50:17 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:50:55 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:50:55 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:50:55 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:58:28 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:59:00 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 08:59:34 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:00:13 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:00:13 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:00:13 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:11:42 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:12:45 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:13:17 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:17:24 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:17:56 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:18:30 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:19:39 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:36:14 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:48:49 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:56:52 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:57:24 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:58:29 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:59:01 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 09:59:35 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:00:14 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:00:14 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:00:14 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:08:16 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:16:18 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:17:18 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:17:50 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:21:55 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:22:57 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:23:29 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:24:03 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:24:42 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:24:42 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:24:42 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:32:15 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 10:39:21 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-05 10:39:21 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-05 10:44:40 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-05 10:44:40 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-05 10:57:04 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-05 10:57:04 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-05 11:07:16 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-05 11:07:16 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-05 11:11:04 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-05 11:11:04 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-05 11:32:14 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-05 11:32:14 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-05 11:55:33 - main - ERROR - error:146 - DeepSeek API请求失败: ("Connection broken: InvalidChunkLength(got length b'', 0 bytes read)", InvalidChunkLength(got length b'', 0 bytes read))
+2025-11-05 12:04:26 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-05 12:04:26 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-05 12:10:50 - main - ERROR - error:146 - DeepSeek API请求失败: ("Connection broken: InvalidChunkLength(got length b'', 0 bytes read)", InvalidChunkLength(got length b'', 0 bytes read))
+2025-11-05 12:18:40 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 12:20:45 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-05 12:20:45 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-05 12:26:39 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 12:52:23 - main - ERROR - error:146 - 生成交易决策失败 DOGE-USDT-SWAP: Invalid format specifier
+2025-11-05 12:52:23 - main - ERROR - error:146 - 生成DOGE-USDT-SWAP决策失败: 生成交易决策失败: Invalid format specifier
+2025-11-05 12:54:08 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:01:58 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:02:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:13:25 - main - ERROR - error:146 - 采集行情数据失败 DOGE-USDT-SWAP: could not convert string to float: ''
+2025-11-05 13:13:25 - main - ERROR - error:146 - 采集DOGE-USDT-SWAP行情失败: 采集行情数据失败: could not convert string to float: ''
+2025-11-05 13:13:57 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:14:30 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:15:04 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:19:41 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:27:40 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 13:30:42 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:31:14 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:31:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:32:27 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:32:27 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:32:27 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:39:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:40:20 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 13:55:44 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 14:10:17 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 14:41:16 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 14:42:35 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 14:59:20 - main - ERROR - error:146 - OKX API请求失败: ('Connection aborted.', ConnectionResetError(104, 'Connection reset by peer'))
+2025-11-05 14:59:51 - main - ERROR - error:146 - DeepSeek API请求失败: ("Connection broken: InvalidChunkLength(got length b'', 0 bytes read)", InvalidChunkLength(got length b'', 0 bytes read))
+2025-11-05 15:12:17 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 15:31:23 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 15:42:56 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 16:07:34 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 16:10:20 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 16:40:27 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 16:42:05 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 16:47:08 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 17:04:12 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 17:21:10 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 17:32:43 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 17:37:44 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-05 17:38:19 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 18:43:26 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 19:00:32 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 19:17:43 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 20:02:37 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 20:02:38 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/orders-algo-pending?instId=DOGE-USDT-SWAP&state=live
+2025-11-05 20:02:39 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/orders-algo-pending?instId=DOGE-USDT-SWAP&state=live
+2025-11-05 20:02:41 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/orders-algo-pending?instId=DOGE-USDT-SWAP&state=live
+2025-11-05 20:02:46 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/orders-algo-pending?instId=DOGE-USDT-SWAP&state=live
+2025-11-05 20:13:35 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 20:13:37 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/orders-algo-pending?instId=DOGE-USDT-SWAP&state=live
+2025-11-05 20:13:38 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/orders-algo-pending?instId=DOGE-USDT-SWAP&state=live
+2025-11-05 20:13:40 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/orders-algo-pending?instId=DOGE-USDT-SWAP&state=live
+2025-11-05 20:13:45 - main - ERROR - error:146 - OKX API请求失败: 400 Client Error: Bad Request for url: https://www.okx.com/api/v5/trade/orders-algo-pending?instId=DOGE-USDT-SWAP&state=live
+2025-11-05 20:48:59 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 20:49:01 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-05 20:49:01 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-05 21:39:43 - main - ERROR - error:146 - OKX API错误 [50026]: System error. Try again later.
+2025-11-05 21:39:43 - main - ERROR - error:146 - 采集订单簿数据失败 SOL-USDT-SWAP: OKX API错误 [50026]: System error. Try again later.
+2025-11-05 21:43:37 - main - ERROR - error:146 - OKX API错误 [50026]: System error. Try again later.
+2025-11-05 21:43:37 - main - ERROR - error:146 - 采集订单簿数据失败 SOL-USDT-SWAP: OKX API错误 [50026]: System error. Try again later.
+2025-11-05 21:47:03 - main - ERROR - error:146 - OKX API错误 [50013]: Systems are busy. Please try again later.
+2025-11-05 21:47:03 - main - ERROR - error:146 - 采集订单簿数据失败 SOL-USDT-SWAP: OKX API错误 [50013]: Systems are busy. Please try again later.
+2025-11-05 22:24:47 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-05 22:24:48 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-05 22:24:49 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 00:02:56 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 00:02:57 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-06 00:02:57 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': '', 'ts': '1762358577108'}]
+2025-11-06 00:02:57 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-06 00:02:57 - main - ERROR - error:146 - 提交订单失败 DOGE-USDT-SWAP_sell_1762358576865: OKX API错误 [1]: All operations failed
+2025-11-06 00:02:57 - main - ERROR - error:146 - 平仓失败 DOGE-USDT-SWAP: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-06 00:02:57 - main - ERROR - error:146 - ❌ DOGE-USDT-SWAP: 平仓失败，终止开仓
+2025-11-06 00:02:57 - main - ERROR - error:146 - ❌ DOGE-USDT-SWAP: 开仓前检查失败，终止执行
+2025-11-06 00:19:16 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 01:08:02 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 01:24:26 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 01:24:26 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-06 01:24:26 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': '', 'ts': '1762363466944'}]
+2025-11-06 01:24:26 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-06 01:24:26 - main - ERROR - error:146 - 提交订单失败 DOGE-USDT-SWAP_sell_1762363466765: OKX API错误 [1]: All operations failed
+2025-11-06 01:24:26 - main - ERROR - error:146 - 平仓失败 DOGE-USDT-SWAP: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-06 01:24:26 - main - ERROR - error:146 - ❌ DOGE-USDT-SWAP: 平仓失败，终止开仓
+2025-11-06 01:24:26 - main - ERROR - error:146 - ❌ DOGE-USDT-SWAP: 开仓前检查失败，终止执行
+2025-11-06 02:28:01 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 02:28:03 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 02:28:03 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 02:44:39 - main - ERROR - error:146 - 🚨 [快速止损触发] DOGE-USDT-SWAP: short | 当前盈亏-8.80% <= 止损限制-2.00% | 开仓价=0.16780, 当前价=0.18257 | 持仓量=4.3500 | ⚠️ 立即平仓！
+2025-11-06 02:44:49 - main - ERROR - error:146 - 🚨 [快速止损触发] DOGE-USDT-SWAP: short | 当前盈亏-8.57% <= 止损限制-2.00% | 开仓价=0.16780, 当前价=0.18218 | 持仓量=4.3500 | ⚠️ 立即平仓！
+2025-11-06 03:01:04 - main - ERROR - error:146 - 🚨 [快速止损触发] DOGE-USDT-SWAP: short | 当前盈亏-7.32% <= 止损限制-2.00% | 开仓价=0.16780, 当前价=0.18008 | 持仓量=4.3500 | ⚠️ 立即平仓！
+2025-11-06 03:01:04 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 03:01:06 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 03:01:06 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 03:01:48 - main - ERROR - error:146 - 🚨 [快速止损触发] DOGE-USDT-SWAP: short | 当前盈亏-7.28% <= 止损限制-2.00% | 开仓价=0.16780, 当前价=0.18002 | 持仓量=4.3500 | ⚠️ 立即平仓！
+2025-11-06 03:18:00 - main - ERROR - error:146 - 🚨 [快速止损触发] DOGE-USDT-SWAP: short | 当前盈亏-5.80% <= 止损限制-2.00% | 开仓价=0.16780, 当前价=0.17754 | 持仓量=4.3500 | ⚠️ 立即平仓！
+2025-11-06 03:18:01 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 03:18:02 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 03:18:02 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 03:18:44 - main - ERROR - error:146 - 🚨 [快速止损触发] DOGE-USDT-SWAP: short | 当前盈亏-5.54% <= 止损限制-2.00% | 开仓价=0.16780, 当前价=0.17709 | 持仓量=4.3500 | ⚠️ 立即平仓！
+2025-11-06 03:34:42 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 03:34:43 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 03:34:44 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 07:54:18 - main - ERROR - error:146 - OKX API请求失败: HTTPSConnectionPool(host='www.okx.com', port=443): Read timed out. (read timeout=10)
+2025-11-06 08:26:13 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 08:26:46 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 08:31:21 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 08:43:21 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 09:03:33 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 09:04:01 - main - ERROR - error:146 - DeepSeek API请求失败: ("Connection broken: InvalidChunkLength(got length b'', 0 bytes read)", InvalidChunkLength(got length b'', 0 bytes read))
+2025-11-06 09:11:39 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 09:54:39 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 11:03:47 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 11:04:19 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 11:04:53 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 11:07:38 - main - ERROR - error:146 - OKX API请求失败: HTTPSConnectionPool(host='www.okx.com', port=443): Read timed out. (read timeout=10)
+2025-11-06 11:09:11 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 11:17:49 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 11:31:49 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 11:31:52 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 11:31:52 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 11:48:34 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 11:48:37 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 11:48:37 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 12:05:10 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 12:05:12 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 12:05:12 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 12:21:47 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 12:21:50 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 12:21:50 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 12:38:22 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 12:38:24 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 12:38:25 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 12:55:04 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 12:55:06 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 12:55:06 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 13:11:48 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 13:28:04 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 13:28:07 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 13:28:07 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 13:44:46 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 13:44:49 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 13:44:49 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 13:45:04 - main - ERROR - error:146 - ❌ SOL-USDT-SWAP: 更新止盈止损到交易所失败: 'ExecutionEngine' object has no attribute '_update_stop_loss_take_profit'
+2025-11-06 14:00:12 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 14:00:14 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 14:00:15 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 14:05:00 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 14:05:03 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 14:05:04 - main - ERROR - error:146 - ❌ SOL-USDT-SWAP: 更新止盈止损到交易所失败: 'ExecutionEngine' object has no attribute '_update_stop_loss_take_profit'
+2025-11-06 14:05:27 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:09:32 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:10:04 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:10:06 - main - ERROR - error:146 - 🚨 [快速止损触发] SOL-USDT-SWAP: long | 账户盈亏-4.01% <= 止损限制-1.50% | 价格变动=-0.40% (杠杆10x) | 开仓价=159.65000, 当前价=159.01000 | 持仓量=4.5200 | ⚠️ 立即平仓！
+2025-11-06 14:10:06 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 14:10:19 - main - ERROR - error:146 - 🚨 [快速止损触发] SOL-USDT-SWAP: long | 账户盈亏-3.76% <= 止损限制-1.50% | 价格变动=-0.38% (杠杆10x) | 开仓价=159.65000, 当前价=159.05000 | 持仓量=4.5200 | ⚠️ 立即平仓！
+2025-11-06 14:14:10 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:14:42 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:15:17 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:16:21 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:17:10 - main - ERROR - error:146 - 保存交易记录失败: Object of type Timestamp is not JSON serializable
+2025-11-06 14:17:13 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 14:17:42 - main - ERROR - error:146 - 更新止盈止损失败 SOL-USDT-SWAP: 'ExecutionEngine' object has no attribute '_cancel_existing_stop_loss_take_profit'
+Traceback (most recent call last):
+  File "/root/crypto-trading-system/src/trading/execution_engine.py", line 1051, in _update_stop_loss_take_profit
+    await self._cancel_existing_stop_loss_take_profit(symbol, position_side)
+AttributeError: 'ExecutionEngine' object has no attribute '_cancel_existing_stop_loss_take_profit'
+2025-11-06 14:19:53 - main - ERROR - error:146 - OKX API错误 [50013]: Systems are busy. Please try again later.
+2025-11-06 14:19:53 - main - ERROR - error:146 - 采集订单簿数据失败 SOL-USDT-SWAP: OKX API错误 [50013]: Systems are busy. Please try again later.
+2025-11-06 14:22:49 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 14:22:50 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 14:22:50 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-06 14:22:50 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-06 14:22:50 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-06 14:22:50 - main - ERROR - error:146 - 设置止损订单失败 SOL-USDT-SWAP: OKX API错误 [1]: 
+2025-11-06 14:22:50 - main - ERROR - error:146 - OKX API错误 [1]: 
+2025-11-06 14:22:50 - main - ERROR - error:146 - 错误详情: [{'algoClOrdId': '', 'algoId': '', 'clOrdId': '', 'sCode': '51000', 'sMsg': 'Parameter posSide error ', 'tag': ''}]
+2025-11-06 14:22:50 - main - ERROR - error:146 - 具体错误: sCode=51000, sMsg=Parameter posSide error 
+2025-11-06 14:22:50 - main - ERROR - error:146 - 设置止盈订单失败 SOL-USDT-SWAP: OKX API错误 [1]: 
+2025-11-06 14:39:19 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 14:44:11 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:45:35 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 14:45:35 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 14:46:57 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 14:46:57 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 14:48:16 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:52:19 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:52:52 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:53:26 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:54:04 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:54:04 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:54:04 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:57:37 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 14:58:10 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:03:39 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 15:03:39 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 15:14:29 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:19:03 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:19:35 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:20:09 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:20:24 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 15:20:25 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 15:20:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:20:48 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:20:48 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:24:21 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:29:23 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:29:56 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:30:30 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:31:08 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:31:08 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:31:08 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:34:41 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:35:14 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:35:48 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:36:27 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:36:27 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:36:27 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:37:29 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 15:37:29 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 15:40:00 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:40:32 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:41:06 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:42:14 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:42:46 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:47:23 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:47:55 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:48:29 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:49:36 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 15:49:36 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 15:52:41 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:53:44 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:54:16 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:58:22 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:58:55 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 15:59:29 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 16:00:08 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 16:00:08 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 16:00:08 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 16:04:10 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 16:16:45 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 16:20:46 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 16:21:19 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 16:25:50 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 16:26:23 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 16:35:17 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 16:35:49 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 17:45:36 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 17:45:36 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 18:02:08 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 18:02:08 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 18:02:09 - main - ERROR - error:146 - OKX API错误 [1]: All operations failed
+2025-11-06 18:02:09 - main - ERROR - error:146 - 错误详情: [{'clOrdId': '', 'ordId': '', 'sCode': '51051', 'sMsg': 'Your SL price should be lower than the primary order price.', 'tag': '', 'ts': '1762423329122'}]
+2025-11-06 18:02:09 - main - ERROR - error:146 - 具体错误: sCode=51051, sMsg=Your SL price should be lower than the primary order price.
+2025-11-06 18:02:09 - main - ERROR - error:146 - 提交订单失败 SOL-USDT-SWAP_buy_1762423328973: OKX API错误 [1]: All operations failed
+2025-11-06 18:02:09 - main - ERROR - error:146 - 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-06 18:02:09 - main - ERROR - error:146 - 执行交易失败 SOL-USDT-SWAP: 执行决策失败: 提交订单失败: OKX API错误 [1]: All operations failed
+2025-11-06 18:05:50 - main - ERROR - error:146 - 🚨 [快速止损触发] SOL-USDT-SWAP: long | 账户盈亏-1.64% <= 止损限制-1.50% | 价格变动=-0.16% (杠杆10x) | 开仓价=158.55000, 当前价=158.29000 | 持仓量=4.4100 | ⚠️ 立即平仓！
+2025-11-06 18:06:05 - main - ERROR - error:146 - 🚨 [快速止损触发] SOL-USDT-SWAP: long | 账户盈亏-1.89% <= 止损限制-1.50% | 价格变动=-0.19% (杠杆10x) | 开仓价=158.55000, 当前价=158.25000 | 持仓量=4.4100 | ⚠️ 立即平仓！
+2025-11-06 19:12:27 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 19:59:09 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 19:59:41 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 20:14:19 - main - ERROR - error:146 - DeepSeek API请求失败: HTTPSConnectionPool(host='api.deepseek.com', port=443): Read timed out.
+2025-11-06 20:21:41 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 20:21:41 - main - ERROR - error:146 - OKX API 400错误 [51000]: Parameter ordType error
+2025-11-06 20:32:37 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:32:39 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:32:44 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:32:53 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:32:53 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:32:53 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:35:56 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:35:59 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:36:03 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:36:12 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:36:12 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:36:12 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:36:13 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:36:15 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:36:20 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:36:29 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:36:29 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:36:29 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:37:16 - main - ERROR - error:146 - DeepSeek API请求失败 (第1次尝试): 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:37:16 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API客户端错误 (402): 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:37:16 - main - ERROR - error:146 - [DeepSeek信号生成] 分析市场失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API客户端错误 (402): 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+Traceback (most recent call last):
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 900, in _request
+    timeout=timeout_tuple,
+  File "/usr/lib/python3/dist-packages/requests/models.py", line 943, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 1611, in analyze_market
+    ]
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 942, in _request
+    status_code = e.response.status_code
+src.core.exception.APIException: DeepSeek API客户端错误 (402): 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 1793, in generate_signal
+    }
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 1772, in analyze_market
+src.core.exception.APIException: 市场分析失败: DeepSeek API客户端错误 (402): 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:37:16 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API客户端错误 (402): 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:37:17 - main - ERROR - error:146 - DeepSeek API请求失败 (第1次尝试): 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:37:17 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API客户端错误 (402): 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:37:17 - main - ERROR - error:146 - [DeepSeek信号生成] 分析市场失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API客户端错误 (402): 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+Traceback (most recent call last):
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 900, in _request
+    timeout=timeout_tuple,
+  File "/usr/lib/python3/dist-packages/requests/models.py", line 943, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 1611, in analyze_market
+    ]
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 942, in _request
+    status_code = e.response.status_code
+src.core.exception.APIException: DeepSeek API客户端错误 (402): 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 1793, in generate_signal
+    }
+  File "/root/crypto-trading-system/src/analysis/deepseek_client.py", line 1772, in analyze_market
+src.core.exception.APIException: 市场分析失败: DeepSeek API客户端错误 (402): 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:37:17 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API客户端错误 (402): 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:39:32 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:39:34 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:39:39 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:39:48 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:39:48 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:39:48 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:39:48 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:39:51 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:39:55 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:40:04 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:40:04 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:40:04 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:43:07 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:43:10 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:43:15 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:43:23 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:43:23 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:43:23 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:46:26 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:46:29 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:46:33 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:46:42 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:46:42 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:46:42 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:49:45 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:49:47 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:49:52 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:50:01 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:50:01 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:50:01 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:50:01 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:50:04 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:50:09 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:50:17 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:50:17 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:50:17 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:53:20 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:53:23 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:53:27 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:53:36 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:53:36 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:53:36 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:53:37 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:53:39 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:53:44 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:53:52 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:53:52 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:53:52 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:56:56 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:56:59 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:57:04 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:57:12 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:57:12 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:57:12 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:57:13 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:57:15 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:57:20 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:57:29 - main - ERROR - error:146 - DeepSeek API请求失败: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:57:29 - main - ERROR - error:146 - [DeepSeek分析] 交易对: SOL-USDT-SWAP - 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions
+2025-11-06 20:57:29 - main - ERROR - error:146 - 生成AI信号失败 SOL-USDT-SWAP: 市场分析失败: DeepSeek API请求失败，已重试3次: 402 Client Error: Payment Required for url: https://api.deepseek.com/v1/chat/completions

@@ -1,0 +1,26 @@
+{
+  "record_id": "DOGE-USDT-SWAP_20251104_112902_743275",
+  "timestamp": "2025-11-04T11:29:02.743498",
+  "symbol": "DOGE-USDT-SWAP",
+  "decision": {
+    "action": "short",
+    "position_size": 0.036000000000000004,
+    "entry_price": 0.1730875,
+    "confidence": 0.54
+  },
+  "ai_analysis": {
+    "recommendation": "unknown",
+    "confidence": 0,
+    "trend": "unknown",
+    "technical_signal": "unknown",
+    "reasoning": "",
+    "key_factors": [],
+    "volume_price_analysis": "",
+    "market_maker_intent": ""
+  },
+  "market_conditions": {
+    "price": 0.1723,
+    "change_24h": -4.22456920511395,
+    "indicators": {
+      "symbol": "DOGE-USDT-SWAP",
+      "timestamp": 

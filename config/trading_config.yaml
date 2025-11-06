@@ -1,0 +1,121 @@
+# 交易对配置
+# 合约交易对格式：永续合约使用 -SWAP 后缀
+trading_pairs:
+  - symbol: "SOL-USDT-SWAP"
+    enabled: true
+    min_order_size: 0.01
+    price_precision: 2  # SOL价格精度（小数点后2位）
+    size_precision: 2  # SOL数量精度
+    leverage: 10  # 杠杆倍数（1-125）- 已设置为10倍杠杆
+    max_position: 1.0  # 最大持仓（1倍合约面值）
+
+# 合约交易配置
+contract_trading:
+  enabled: true  # 启用合约交易
+  allow_short: true  # 允许做空
+  allow_long: true  # 允许做多
+  
+  # 资金费率考虑
+  funding_rate:
+    enabled: true  # 考虑资金费率
+    threshold: 0.0001  # 费率阈值（0.01%），超过此值才考虑
+  
+  # 持仓方向管理
+  position_direction:
+    allow_both: false  # 是否允许同时持有多空仓位（通常不允许）
+    prefer_direction: "auto"  # 首选方向：auto自动、long做多、short做空
+
+# 自动交易配置
+auto_trading:
+  enabled: true  # 启用自动交易（根据决策自动买入卖出）
+  min_confidence: 0.25  # 大幅降低：抓住更多机会（>=0.25），确保能够交易
+  min_position_size: 0.005  # 最小仓位（0.5%），进一步降低以抓住更多小机会
+  # 狼式交易策略：快速出击，快速撤退
+  quick_profit_target: 0.05  # 快速获利目标：5%就撤退（更快锁定利润，提高交易频率）
+  quick_stop_loss: 0.015  # 快速止损：账户盈亏1.5%就止损（10倍杠杆下价格变动0.15%）
+
+# 信号生成配置
+signal_generation:
+  # 技术面信号
+  technical:
+    enabled: true
+    indicators:
+      - name: "MACD"
+        enabled: true
+        params:
+          fast_period: 12
+          slow_period: 26
+          signal_period: 9
+      
+      - name: "RSI"
+        enabled: true
+        params:
+          period: 14
+          overbought: 70
+          oversold: 30
+    
+    # 合约专用：双向信号生成
+    contract_mode: true  # 合约模式：生成做多做空信号
+    short_threshold: 0.6  # 做空信号阈值（RSI>此值或MACD死叉时）
+    long_threshold: 0.4  # 做多信号阈值（RSI<此值或MACD金叉时）
+  
+  # 资金面信号
+  funding:
+    enabled: true
+    large_order_threshold: 100000  # USDT
+    exchange_balance_threshold: 0.02  # 2%变化
+  
+  # 链上信号
+  chain:
+    enabled: true
+    whale_threshold: 1000  # BTC/ETH
+    address_monitoring:
+      enabled: true
+      top_n: 100
+  
+  # 情绪面信号
+  sentiment:
+    enabled: true
+    fear_greed_threshold:
+      extreme_fear: 20
+      extreme_greed: 80
+  
+  # AI分析
+  ai_analysis:
+    enabled: true
+    provider: "deepseek"
+    model: "deepseek-chat"
+    temperature: 0.3
+    max_tokens: 2000
+
+# 交易优化配置（针对15分钟K线优化：提高交易频率，放宽过滤条件）
+trading_optimization:
+  # 入场时机评估（针对15分钟K线优化）
+  min_entry_score: 50  # 最小入场评分（0-100，>=50才入场）- 降低要求，提高交易频率
+  
+  # 多重过滤机制（针对15分钟K线优化：放宽条件）
+  require_trend_confirmation: false  # 是否需要趋势确认（设为false，放宽要求）
+  max_volatility_filter: true  # 过滤高波动市场
+  max_volatility_threshold: 6.0  # 最大波动率阈值（%）- 放宽到6%，允许更多交易机会
+  
+  # 日亏损限制
+  max_daily_loss_pct: 0.02  # 单日最大亏损百分比，超过则停止交易（参考ds-main：2%）
+  
+  # 交易频率控制（针对15分钟K线优化）
+  min_trade_interval: 900  # 最小交易间隔（秒）- 15分钟（针对15分钟K线）
+  max_loss_streak: 3  # 最大连续亏损次数，超过后暂停交易（放宽到3次）
+
+# 信号评分配置
+signal_scoring:
+  weights:
+    forward_analysis: 0.35  # 前瞻性分析（订单簿、订单流等）- 最重要，因为更实时
+    technical: 0.20  # 技术面信号（滞后指标，作为确认）- 降低权重
+    funding: 0.15  # 资金面信号
+    chain: 0.15  # 链上信号
+    sentiment: 0.10  # 情绪面信号
+    ai_analysis: 0.05  # AI分析（主要用于辅助）
+  
+  thresholds:
+    strong: 60  # 强信号阈值
+    medium: 40  # 中等信号阈值
+    weak: 20  # 弱信号阈值
