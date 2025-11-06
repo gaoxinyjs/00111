@@ -6,13 +6,18 @@ OKX API客户端
 """
 
 import time
+import json
 import hmac
 import base64
 import hashlib
 import asyncio
-from typing import Dict, List, Optional, Any
+import threading
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
+from urllib.parse import urlencode
+
 import aiohttp
+from aiohttp import ClientError, ClientSession
 import requests
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
@@ -37,17 +42,22 @@ class OKXClient:
         self.base_url = okx_config.get('base_url', 'https://www.okx.com')
         self.test_mode = okx_config.get('test_mode', False)
         self.trade_mode = okx_config.get('trade_mode', 'cross')  # 交易模式：cross全仓（合约）, isolated逐仓（合约）, cash现货
+        self.timeout = okx_config.get('timeout', 10)
         
         # 限流配置
         rate_limit = okx_config.get('rate_limit', {})
         self.rest_requests_per_second = rate_limit.get('rest_requests_per_second', 10)
         self.last_request_time = 0
+        self._sync_rate_limit_lock = threading.Lock()
+        self._async_rate_limit_lock: Optional[asyncio.Lock] = None
         
         # 重试配置
         retry_config = okx_config.get('retry', {})
         self.max_retries = retry_config.get('max_retries', 3)
         self.retry_delay = retry_config.get('retry_delay', 1)
         self.backoff_factor = retry_config.get('backoff_factor', 2)
+        self._session: Optional[ClientSession] = None
+        self._session_lock: Optional[asyncio.Lock] = None
         
         if not all([self.api_key, self.secret_key, self.passphrase]):
             self.logger.warning("OKX API密钥未配置，请检查配置")
@@ -116,14 +126,55 @@ class OKXClient:
     
     def _rate_limit(self):
         """API限流"""
-        current_time = time.time()
-        min_interval = 1.0 / self.rest_requests_per_second
-        
-        if current_time - self.last_request_time < min_interval:
-            sleep_time = min_interval - (current_time - self.last_request_time)
-            time.sleep(sleep_time)
-        
-        self.last_request_time = time.time()
+        with self._sync_rate_limit_lock:
+            current_time = time.time()
+            min_interval = 1.0 / self.rest_requests_per_second
+            if current_time - self.last_request_time < min_interval:
+                sleep_time = min_interval - (current_time - self.last_request_time)
+                time.sleep(sleep_time)
+            self.last_request_time = time.time()
+
+    async def _rate_limit_async(self):
+        """异步API限流"""
+        if self._async_rate_limit_lock is None:
+            self._async_rate_limit_lock = asyncio.Lock()
+        async with self._async_rate_limit_lock:
+            current_time = time.time()
+            min_interval = 1.0 / self.rest_requests_per_second
+            if current_time - self.last_request_time < min_interval:
+                sleep_time = min_interval - (current_time - self.last_request_time)
+                await asyncio.sleep(sleep_time)
+            self.last_request_time = time.time()
+
+    async def _ensure_session(self) -> ClientSession:
+        """确保 aiohttp 会话已创建"""
+        if self._session and not self._session.closed:
+            return self._session
+        if self._session_lock is None:
+            self._session_lock = asyncio.Lock()
+        async with self._session_lock:
+            if self._session is None or self._session.closed:
+                timeout = aiohttp.ClientTimeout(total=self.timeout)
+                self._session = ClientSession(base_url=self.base_url, timeout=timeout)
+        return self._session
+
+    async def close(self):
+        """关闭底层 aiohttp 会话"""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
+
+    def close_sync(self):
+        """同步关闭会话（用于脚本）"""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(self.close())
+        else:
+            if loop.is_running():
+                loop.create_task(self.close())
+            else:
+                loop.run_until_complete(self.close())
     
     def _request(self, method: str, endpoint: str, params: Optional[Dict] = None, 
                  data: Optional[Dict] = None, retry: int = 0) -> Dict[str, Any]:
@@ -160,11 +211,11 @@ class OKXClient:
         
         try:
             if method.upper() == 'GET':
-                response = requests.get(url, headers=headers, params=params, timeout=10)
+                response = requests.get(url, headers=headers, params=params, timeout=self.timeout)
             elif method.upper() == 'POST':
-                response = requests.post(url, headers=headers, json=data, params=params, timeout=10)
+                response = requests.post(url, headers=headers, json=data, params=params, timeout=self.timeout)
             elif method.upper() == 'DELETE':
-                response = requests.delete(url, headers=headers, json=data, params=params, timeout=10)
+                response = requests.delete(url, headers=headers, json=data, params=params, timeout=self.timeout)
             else:
                 raise APIException(f"不支持的HTTP方法: {method}")
             
@@ -267,6 +318,123 @@ class OKXClient:
         endpoint = f"/api/v5/market/ticker"
         params = {'instId': symbol}
         return self._request('GET', endpoint, params=params)
+
+    async def get_ticker_async(self, symbol: str) -> Dict[str, Any]:
+        """异步获取行情"""
+        endpoint = "/api/v5/market/ticker"
+        params = {'instId': symbol}
+        return await self._request_async('GET', endpoint, params=params)
+
+    async def _request_async(self, method: str, endpoint: str, params: Optional[Dict] = None,
+                             data: Optional[Dict] = None, retry: int = 0) -> Dict[str, Any]:
+        """异步发送API请求"""
+        await self._rate_limit_async()
+
+        body = ""
+        if data:
+            body = json.dumps(data)
+
+        request_path = endpoint
+        if method.upper() == 'GET' and params:
+            sorted_params = sorted(params.items())
+            query_string = urlencode(sorted_params)
+            request_path = f"{endpoint}?{query_string}"
+
+        headers = self._get_headers(method, request_path, body)
+        session = await self._ensure_session()
+
+        try:
+            if method.upper() == 'GET':
+                http_method = session.get
+                request_kwargs = {'params': params}
+            elif method.upper() == 'POST':
+                http_method = session.post
+                request_kwargs = {'json': data, 'params': params}
+            elif method.upper() == 'DELETE':
+                http_method = session.delete
+                request_kwargs = {'json': data, 'params': params}
+            else:
+                raise APIException(f"不支持的HTTP方法: {method}")
+
+            async with http_method(endpoint, headers=headers, **request_kwargs) as response:
+                text = await response.text()
+
+                if response.status == 401:
+                    error_detail = ""
+                    try:
+                        result = json.loads(text)
+                        error_detail = result.get('msg', text)
+                    except json.JSONDecodeError:
+                        error_detail = text
+                    self.logger.error(f"OKX API认证失败 (401): {error_detail}")
+                    self.logger.error("请检查以下配置：")
+                    self.logger.error(f"  - API Key: {'已配置' if self.api_key else '未配置'}")
+                    self.logger.error(f"  - Secret Key: {'已配置' if self.secret_key else '未配置'}")
+                    self.logger.error(f"  - Passphrase: {'已配置' if self.passphrase else '未配置'}")
+                    raise APIException(f"OKX API认证失败: {error_detail}. 请检查API密钥配置")
+
+                if response.status == 400:
+                    try:
+                        result = json.loads(text)
+                        error_msg = result.get('msg', '未知错误')
+                        error_code = result.get('code', '未知')
+                        error_data = result.get('data', [])
+                        self.logger.error(f"OKX API 400错误 [{error_code}]: {error_msg}")
+                        if error_data:
+                            self.logger.error(f"错误详情: {error_data}")
+                            if isinstance(error_data, list) and len(error_data) > 0:
+                                first_error = error_data[0]
+                                if isinstance(first_error, dict):
+                                    s_code = first_error.get('sCode', '')
+                                    s_msg = first_error.get('sMsg', '')
+                                    if s_code or s_msg:
+                                        self.logger.error(f"具体错误: sCode={s_code}, sMsg={s_msg}")
+                        if params:
+                            self.logger.debug(f"请求参数: {params}")
+                        if data:
+                            self.logger.debug(f"请求体: {data}")
+                        raise APIException(f"OKX API 400错误 [{error_code}]: {error_msg}")
+                    except json.JSONDecodeError:
+                        self.logger.error(f"OKX API 400错误，响应不是JSON格式: {text}")
+                        raise APIException(f"OKX API 400错误: {text}")
+
+                if response.status >= 400:
+                    self.logger.error(f"OKX API请求失败，状态码: {response.status}, 响应: {text}")
+                    response.raise_for_status()
+
+                try:
+                    result = json.loads(text)
+                except json.JSONDecodeError:
+                    raise APIException(f"OKX API响应不是JSON格式: {text}")
+
+                if result.get('code') != '0':
+                    error_msg = result.get('msg', '未知错误')
+                    error_code = result.get('code', '未知')
+                    error_data = result.get('data', [])
+                    self.logger.error(f"OKX API错误 [{error_code}]: {error_msg}")
+                    if error_data:
+                        self.logger.error(f"错误详情: {error_data}")
+                        if isinstance(error_data, list) and len(error_data) > 0:
+                            first_error = error_data[0]
+                            if isinstance(first_error, dict):
+                                s_code = first_error.get('sCode', '')
+                                s_msg = first_error.get('sMsg', '')
+                                if s_code or s_msg:
+                                    self.logger.error(f"具体错误: sCode={s_code}, sMsg={s_msg}")
+                    raise APIException(f"OKX API错误 [{error_code}]: {error_msg}")
+
+                return result.get('data', {})
+
+        except (ClientError, asyncio.TimeoutError) as e:
+            self.logger.error(f"OKX API请求失败: {e}")
+
+            if retry < self.max_retries:
+                delay = self.retry_delay * (self.backoff_factor ** retry)
+                self.logger.info(f"重试请求 (第{retry + 1}次)，延迟{delay}秒...")
+                await asyncio.sleep(delay)
+                return await self._request_async(method, endpoint, params, data, retry + 1)
+
+            raise APIException(f"OKX API请求失败，已重试{self.max_retries}次: {e}")
     
     def get_orderbook(self, symbol: str, depth: int = 20) -> Dict[str, Any]:
         """
@@ -282,6 +450,12 @@ class OKXClient:
         endpoint = f"/api/v5/market/books"
         params = {'instId': symbol, 'sz': depth}
         return self._request('GET', endpoint, params=params)
+
+    async def get_orderbook_async(self, symbol: str, depth: int = 20) -> Dict[str, Any]:
+        """异步获取订单簿"""
+        endpoint = "/api/v5/market/books"
+        params = {'instId': symbol, 'sz': depth}
+        return await self._request_async('GET', endpoint, params=params)
     
     def get_kline(self, symbol: str, interval: str = '1H', limit: int = 100) -> List[Dict[str, Any]]:
         """
@@ -302,6 +476,16 @@ class OKXClient:
             'limit': limit
         }
         return self._request('GET', endpoint, params=params)
+
+    async def get_kline_async(self, symbol: str, interval: str = '1H', limit: int = 100) -> List[Dict[str, Any]]:
+        """异步获取K线数据"""
+        endpoint = "/api/v5/market/candles"
+        params = {
+            'instId': symbol,
+            'bar': interval,
+            'limit': limit
+        }
+        return await self._request_async('GET', endpoint, params=params)
     
     def get_balance(self, currency: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -319,6 +503,14 @@ class OKXClient:
             params['ccy'] = currency
         
         return self._request('GET', endpoint, params=params)
+
+    async def get_balance_async(self, currency: Optional[str] = None) -> List[Dict[str, Any]]:
+        """异步获取账户余额"""
+        endpoint = "/api/v5/account/balance"
+        params = {}
+        if currency:
+            params['ccy'] = currency
+        return await self._request_async('GET', endpoint, params=params)
     
     def get_instruments(self, inst_type: str = "SWAP", symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -337,6 +529,14 @@ class OKXClient:
             params['instId'] = symbol  # instId是交易对符号
         
         return self._request('GET', endpoint, params=params)
+
+    async def get_instruments_async(self, inst_type: str = "SWAP", symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+        """异步获取合约信息"""
+        endpoint = "/api/v5/public/instruments"
+        params = {'instType': inst_type}
+        if symbol:
+            params['instId'] = symbol
+        return await self._request_async('GET', endpoint, params=params)
     
     def get_positions(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -354,6 +554,14 @@ class OKXClient:
             params['instId'] = symbol
         
         return self._request('GET', endpoint, params=params)
+
+    async def get_positions_async(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+        """异步获取持仓"""
+        endpoint = "/api/v5/account/positions"
+        params = {}
+        if symbol:
+            params['instId'] = symbol
+        return await self._request_async('GET', endpoint, params=params)
     
     def set_leverage(self, symbol: str, leverage: int, margin_mode: str = 'cross') -> Dict[str, Any]:
         """
@@ -386,13 +594,32 @@ class OKXClient:
         self.logger.info(f"设置杠杆: {symbol}, 杠杆倍数={leverage}x, 保证金模式={margin_mode}")
         return self._request('POST', endpoint, data=data)
     
-    def place_order(self, symbol: str, side: str, order_type: str, 
-                   size: str, price: Optional[str] = None,
-                   pos_side: Optional[str] = None, reduce_only: bool = False,
-                   stop_loss_price: Optional[str] = None,
-                   take_profit_price: Optional[str] = None) -> Dict[str, Any]:
+    async def set_leverage_async(self, symbol: str, leverage: int, margin_mode: str = 'cross') -> Dict[str, Any]:
+        """异步设置杠杆倍数"""
+        endpoint = "/api/v5/account/set-leverage"
+        if symbol.endswith('-SWAP'):
+            inst_type = 'SWAP'
+        elif symbol.endswith('-FUTURES'):
+            inst_type = 'FUTURES'
+        else:
+            inst_type = 'SWAP'
+
+        data = {
+            'instId': symbol,
+            'lever': str(leverage),
+            'mgnMode': margin_mode
+        }
+
+        self.logger.info(f"设置杠杆(异步): {symbol}, 杠杆倍数={leverage}x, 保证金模式={margin_mode}")
+        return await self._request_async('POST', endpoint, data=data)
+
+    def _prepare_place_order_payload(self, symbol: str, side: str, order_type: str, 
+                                     size: str, price: Optional[str] = None,
+                                     pos_side: Optional[str] = None, reduce_only: bool = False,
+                                     stop_loss_price: Optional[str] = None,
+                                     take_profit_price: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """
-        下单（支持合约交易，支持同时设置止盈止损）
+        构建下单请求数据（内部使用）
         
         Args:
             symbol: 交易对符号
@@ -404,9 +631,9 @@ class OKXClient:
             reduce_only: 是否只减仓（平仓）- 合约交易使用
             stop_loss_price: 止损触发价格（可选，创建订单时同时设置止损）
             take_profit_price: 止盈触发价格（可选，创建订单时同时设置止盈）
-            
+        
         Returns:
-            订单信息
+            包含请求端点和订单数据的元组
         """
         endpoint = "/api/v5/trade/order"
         
@@ -522,25 +749,36 @@ class OKXClient:
         # 记录订单参数（用于调试）
         self.logger.debug(f"[下单] 交易对: {symbol}, 订单参数: {order_data}")
         
+        return endpoint, order_data
+
+    def place_order(self, symbol: str, side: str, order_type: str, 
+                   size: str, price: Optional[str] = None,
+                   pos_side: Optional[str] = None, reduce_only: bool = False,
+                   stop_loss_price: Optional[str] = None,
+                   take_profit_price: Optional[str] = None) -> Dict[str, Any]:
+        """同步下单接口"""
+        endpoint, order_data = self._prepare_place_order_payload(
+            symbol, side, order_type, size, price, pos_side,
+            reduce_only, stop_loss_price, take_profit_price
+        )
         return self._request('POST', endpoint, data=order_data)
+
+    async def place_order_async(self, symbol: str, side: str, order_type: str,
+                                size: str, price: Optional[str] = None,
+                                pos_side: Optional[str] = None, reduce_only: bool = False,
+                                stop_loss_price: Optional[str] = None,
+                                take_profit_price: Optional[str] = None) -> Dict[str, Any]:
+        """异步下单接口"""
+        endpoint, order_data = self._prepare_place_order_payload(
+            symbol, side, order_type, size, price, pos_side,
+            reduce_only, stop_loss_price, take_profit_price
+        )
+        return await self._request_async('POST', endpoint, data=order_data)
     
-    def place_stop_loss_order(self, symbol: str, side: str, size: str, 
-                              trigger_price: str, order_price: Optional[str] = None,
-                              pos_side: Optional[str] = None) -> Dict[str, Any]:
-        """
-        设置止损订单（条件单）
-        
-        Args:
-            symbol: 交易对符号
-            side: 方向（buy, sell）
-            size: 数量
-            trigger_price: 触发价格（当价格达到此价格时触发）
-            order_price: 委托价格（触发后的下单价格，None表示使用触发价格作为限价）
-            pos_side: 持仓方向（long, short）- 合约交易使用
-            
-        Returns:
-            订单信息
-        """
+    def _prepare_stop_loss_order_payload(self, symbol: str, side: str, size: str,
+                                         trigger_price: str, order_price: Optional[str] = None,
+                                         pos_side: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+        """构建止损订单请求数据（内部使用）"""
         endpoint = "/api/v5/trade/order-algo"
         
         # 格式化数量
@@ -613,25 +851,30 @@ class OKXClient:
             f"限价={order_price_str}"
         )
         
-        return self._request('POST', endpoint, data=order_data)
+        return endpoint, order_data
     
-    def place_take_profit_order(self, symbol: str, side: str, size: str,
-                                trigger_price: str, order_price: Optional[str] = None,
-                                pos_side: Optional[str] = None) -> Dict[str, Any]:
-        """
-        设置止盈订单（条件单）
-        
-        Args:
-            symbol: 交易对符号
-            side: 方向（buy, sell）
-            size: 数量
-            trigger_price: 触发价格（当价格达到此价格时触发）
-            order_price: 委托价格（触发后的下单价格，None表示使用触发价格作为限价）
-            pos_side: 持仓方向（long, short）- 合约交易使用
-            
-        Returns:
-            订单信息
-        """
+    def place_stop_loss_order(self, symbol: str, side: str, size: str,
+                              trigger_price: str, order_price: Optional[str] = None,
+                              pos_side: Optional[str] = None) -> Dict[str, Any]:
+        """同步设置止损订单"""
+        endpoint, order_data = self._prepare_stop_loss_order_payload(
+            symbol, side, size, trigger_price, order_price, pos_side
+        )
+        return self._request('POST', endpoint, data=order_data)
+
+    async def place_stop_loss_order_async(self, symbol: str, side: str, size: str,
+                                          trigger_price: str, order_price: Optional[str] = None,
+                                          pos_side: Optional[str] = None) -> Dict[str, Any]:
+        """异步设置止损订单"""
+        endpoint, order_data = self._prepare_stop_loss_order_payload(
+            symbol, side, size, trigger_price, order_price, pos_side
+        )
+        return await self._request_async('POST', endpoint, data=order_data)
+
+    def _prepare_take_profit_order_payload(self, symbol: str, side: str, size: str,
+                                           trigger_price: str, order_price: Optional[str] = None,
+                                           pos_side: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+        """构建止盈订单请求数据（内部使用）"""
         endpoint = "/api/v5/trade/order-algo"
         
         # 格式化数量
@@ -704,8 +947,26 @@ class OKXClient:
             f"限价={order_price_str}"
         )
         
-        return self._request('POST', endpoint, data=order_data)
+        return endpoint, order_data
     
+    def place_take_profit_order(self, symbol: str, side: str, size: str,
+                                trigger_price: str, order_price: Optional[str] = None,
+                                pos_side: Optional[str] = None) -> Dict[str, Any]:
+        """同步设置止盈订单"""
+        endpoint, order_data = self._prepare_take_profit_order_payload(
+            symbol, side, size, trigger_price, order_price, pos_side
+        )
+        return self._request('POST', endpoint, data=order_data)
+
+    async def place_take_profit_order_async(self, symbol: str, side: str, size: str,
+                                            trigger_price: str, order_price: Optional[str] = None,
+                                            pos_side: Optional[str] = None) -> Dict[str, Any]:
+        """异步设置止盈订单"""
+        endpoint, order_data = self._prepare_take_profit_order_payload(
+            symbol, side, size, trigger_price, order_price, pos_side
+        )
+        return await self._request_async('POST', endpoint, data=order_data)
+
     def cancel_order(self, symbol: str, order_id: str) -> Dict[str, Any]:
         """
         撤单
@@ -723,6 +984,15 @@ class OKXClient:
             'ordId': order_id
         }
         return self._request('POST', endpoint, data=data)
+
+    async def cancel_order_async(self, symbol: str, order_id: str) -> Dict[str, Any]:
+        """异步撤单"""
+        endpoint = "/api/v5/trade/cancel-order"
+        data = {
+            'instId': symbol,
+            'ordId': order_id
+        }
+        return await self._request_async('POST', endpoint, data=data)
     
     def cancel_algo_order(self, symbol: str, algo_id: str) -> Dict[str, Any]:
         """
@@ -741,6 +1011,15 @@ class OKXClient:
             'algoId': algo_id
         }
         return self._request('POST', endpoint, data=data)
+
+    async def cancel_algo_order_async(self, symbol: str, algo_id: str) -> Dict[str, Any]:
+        """异步撤销算法订单"""
+        endpoint = "/api/v5/trade/cancel-algo-order"
+        data = {
+            'instId': symbol,
+            'algoId': algo_id
+        }
+        return await self._request_async('POST', endpoint, data=data)
     
     def get_algo_orders(self, symbol: Optional[str] = None, 
                        order_type: Optional[str] = None,
@@ -847,6 +1126,47 @@ class OKXClient:
             # 如果重试失败或不是400错误，记录警告并返回空列表
             self.logger.warning(f"查询算法订单失败: {e}")
             return []
+
+    async def get_algo_orders_async(self, symbol: Optional[str] = None,
+                                    order_type: Optional[str] = None,
+                                    state: Optional[str] = None) -> List[Dict[str, Any]]:
+        """异步查询算法订单"""
+        endpoint = "/api/v5/trade/orders-algo-pending"
+        params = {}
+        if symbol:
+            params['instId'] = symbol
+        if state:
+            params['state'] = state
+
+        try:
+            result = await self._request_async('GET', endpoint, params=params)
+            if isinstance(result, list):
+                if state == 'live':
+                    return [order for order in result if order.get('state') == 'live']
+                return result
+            elif isinstance(result, dict):
+                if 'code' in result:
+                    if result.get('code') == '0':
+                        data = result.get('data', [])
+                        if state == 'live':
+                            return [order for order in data if order.get('state') == 'live']
+                        return data
+                    else:
+                        error_msg = result.get('msg', '未知错误')
+                        self.logger.warning(f"查询算法订单失败: {error_msg}")
+                        return []
+                elif 'data' in result:
+                    data = result.get('data', [])
+                    if state == 'live':
+                        return [order for order in data if order.get('state') == 'live']
+                    return data
+                else:
+                    return []
+            else:
+                return []
+        except Exception as e:
+            self.logger.warning(f"查询算法订单失败(异步): {e}")
+            return []
     
     def get_order_status(self, symbol: str, order_id: str) -> Dict[str, Any]:
         """
@@ -865,6 +1185,15 @@ class OKXClient:
             'ordId': order_id
         }
         return self._request('GET', endpoint, params=params)
+
+    async def get_order_status_async(self, symbol: str, order_id: str) -> Dict[str, Any]:
+        """异步查询订单状态"""
+        endpoint = "/api/v5/trade/order"
+        params = {
+            'instId': symbol,
+            'ordId': order_id
+        }
+        return await self._request_async('GET', endpoint, params=params)
     
     def get_pending_orders(self, symbol: Optional[str] = None, 
                           order_type: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -892,6 +1221,27 @@ class OKXClient:
             if result.get('code') == '0':
                 return result.get('data', [])
         
+        return []
+
+    async def get_pending_orders_async(self, symbol: Optional[str] = None,
+                                       order_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """异步获取待处理订单"""
+        endpoint = "/api/v5/trade/orders-pending"
+        params = {}
+        if symbol:
+            params['instId'] = symbol
+        if order_type:
+            params['ordType'] = order_type
+
+        result = await self._request_async('GET', endpoint, params=params)
+
+        if result and isinstance(result, dict):
+            if result.get('code') == '0':
+                return result.get('data', [])
+
+        if isinstance(result, list):
+            return result
+
         return []
 
 
