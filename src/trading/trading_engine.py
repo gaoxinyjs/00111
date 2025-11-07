@@ -819,7 +819,7 @@ class TradingEngine:
         try:
             # ⚠️ 首先从API实时获取最新持仓数据（确保数据准确）
             try:
-                positions_result = self.okx_client.get_positions()
+                positions_result = await self.okx_client.get_positions_async()
 
                 # 处理不同的返回格式
                 if isinstance(positions_result, dict):
@@ -875,9 +875,7 @@ class TradingEngine:
                     if not symbol_market_data:
                         # 如果没有市场数据，尝试从ticker获取价格
                         try:
-                            ticker = await self.data_collector.collect_ticker(
-                                symbol
-                            )
+                            ticker = await self.data_collector.collect_ticker(symbol)
                             if ticker:
                                 symbol_market_data = {
                                     "symbol": symbol,
@@ -1348,7 +1346,7 @@ class TradingEngine:
         """更新持仓"""
         try:
             # 从交易所获取最新持仓
-            positions_result = self.okx_client.get_positions()
+            positions_result = await self.okx_client.get_positions_async()
 
             # 处理不同的返回格式
             if isinstance(positions_result, dict):
@@ -1734,7 +1732,9 @@ class TradingEngine:
                         if not symbol_market_data:
                             # 如果没有市场数据，尝试获取
                             try:
-                                ticker = await self.data_collector.collect_ticker(symbol)
+                                ticker = await self.data_collector.collect_ticker(
+                                    symbol
+                                )
                                 if ticker:
                                     symbol_market_data = {
                                         "symbol": symbol,

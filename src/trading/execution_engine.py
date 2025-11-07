@@ -159,7 +159,9 @@ class ExecutionEngine:
                     margin_mode = api_config.get("trade_mode", "cross")  # 默认全仓
 
                     # 设置杠杆
-                    await self.okx_client.set_leverage_async(symbol, leverage, margin_mode)
+                    await self.okx_client.set_leverage_async(
+                        symbol, leverage, margin_mode
+                    )
                     self.logger.info(
                         f"已设置杠杆: {symbol}, 杠杆倍数={leverage}x, 保证金模式={margin_mode}"
                     )
@@ -228,7 +230,9 @@ class ExecutionEngine:
                 if price and price > 0:
                     # 获取合约信息，确定lot size（合约面值）
                     try:
-                        instruments = await self.okx_client.get_instruments_async("SWAP", symbol)
+                        instruments = await self.okx_client.get_instruments_async(
+                            "SWAP", symbol
+                        )
 
                         lot_size = 1.0  # 默认lot size
                         min_size = 0.001  # 默认最小订单数量
@@ -295,7 +299,9 @@ class ExecutionEngine:
             # 确保数量精度（根据合约信息）
             try:
                 # 获取合约信息以确定lotSz和minSz
-                instruments = await self.okx_client.get_instruments_async("SWAP", symbol)
+                instruments = await self.okx_client.get_instruments_async(
+                    "SWAP", symbol
+                )
 
                 lot_size = 0.1  # 默认值
                 min_size = 0.1  # 默认值
@@ -638,9 +644,7 @@ class ExecutionEngine:
             okx_client = self.okx_client
 
             # 查询现有的算法订单（止盈止损订单）
-            # 查询算法订单（不传递ordType参数，让API返回所有类型的算法订单）
-            # 注意：对于通过attachAlgoOrds创建的止盈止损订单，查询时不需要传递ordType参数
-            algo_orders = okx_client.get_algo_orders(
+            algo_orders = await okx_client.get_algo_orders_async(
                 symbol=symbol, state="live", order_type=None
             )
 
@@ -667,7 +671,9 @@ class ExecutionEngine:
                             continue
 
                     # 取消算法订单
-                    cancel_result = okx_client.cancel_algo_order(symbol, algo_id)
+                    cancel_result = await okx_client.cancel_algo_order_async(
+                        symbol, algo_id
+                    )
 
                     if cancel_result and isinstance(cancel_result, dict):
                         if cancel_result.get("code") == "0":
@@ -714,7 +720,7 @@ class ExecutionEngine:
             okx_client = self.okx_client
 
             # 1. 检查是否有持仓
-            positions_result = okx_client.get_positions(symbol)
+            positions_result = await okx_client.get_positions_async(symbol)
             current_position = None
 
             if positions_result:
@@ -740,7 +746,7 @@ class ExecutionEngine:
             pending_orders = []
             try:
                 # 获取待处理的订单
-                orders_result = okx_client.get_pending_orders(symbol)
+                orders_result = await okx_client.get_pending_orders_async(symbol)
                 if orders_result:
                     if isinstance(orders_result, dict):
                         if orders_result.get("code") == "0":
@@ -757,7 +763,9 @@ class ExecutionEngine:
                     try:
                         order_id = order.get("ordId", "")
                         if order_id:
-                            cancel_result = okx_client.cancel_order(symbol, order_id)
+                            cancel_result = await okx_client.cancel_order_async(
+                                symbol, order_id
+                            )
                             if cancel_result and isinstance(cancel_result, dict):
                                 if cancel_result.get("code") == "0":
                                     self.logger.info(
@@ -984,7 +992,7 @@ class ExecutionEngine:
             # 如果当前价格为0，尝试从市场数据获取
             if current_price <= 0:
                 try:
-                    ticker = okx_client.get_ticker(symbol)
+                    ticker = await okx_client.get_ticker_async(symbol)
                     if ticker and isinstance(ticker, dict):
                         if ticker.get("code") == "0":
                             data = ticker.get("data", [])
@@ -1013,7 +1021,7 @@ class ExecutionEngine:
                     # 止损：当价格 <= 止损价格时，卖出（市价）
                     if stop_loss_price < current_price:
                         try:
-                            stop_loss_result = okx_client.place_stop_loss_order(
+                            stop_loss_result = await okx_client.place_stop_loss_order_async(
                                 symbol=symbol,
                                 side="sell",  # 止损是卖出
                                 size=size_str,
@@ -1038,7 +1046,7 @@ class ExecutionEngine:
                     # 止盈：当价格 >= 止盈价格时，卖出（市价）
                     if take_profit_price > current_price:
                         try:
-                            take_profit_result = okx_client.place_take_profit_order(
+                            take_profit_result = await okx_client.place_take_profit_order_async(
                                 symbol=symbol,
                                 side="sell",  # 止盈是卖出
                                 size=size_str,
@@ -1068,7 +1076,7 @@ class ExecutionEngine:
                     # 止损：当价格 >= 止损价格时，买入（市价）
                     if stop_loss_price > current_price:
                         try:
-                            stop_loss_result = okx_client.place_stop_loss_order(
+                            stop_loss_result = await okx_client.place_stop_loss_order_async(
                                 symbol=symbol,
                                 side="buy",  # 止损是买入
                                 size=size_str,
@@ -1093,7 +1101,7 @@ class ExecutionEngine:
                     # 止盈：当价格 <= 止盈价格时，买入（市价）
                     if take_profit_price < current_price:
                         try:
-                            take_profit_result = okx_client.place_take_profit_order(
+                            take_profit_result = await okx_client.place_take_profit_order_async(
                                 symbol=symbol,
                                 side="buy",  # 止盈是买入
                                 size=size_str,
