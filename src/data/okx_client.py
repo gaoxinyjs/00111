@@ -13,6 +13,7 @@ import hashlib
 import asyncio
 import threading
 import contextlib
+import atexit
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 from urllib.parse import urlencode
@@ -223,6 +224,16 @@ class OKXClient:
                 instance._async_rate_limit_lock = None
                 instance.last_request_time = 0
             cls._instance = None
+
+    @classmethod
+    def close_instance(cls):
+        """在程序退出时关闭共享实例"""
+        with cls._instance_lock:
+            instance = cls._instance
+            if instance is not None:
+                with contextlib.suppress(Exception):
+                    instance.close_sync()
+                cls._instance = None
 
     def _request(
         self,
@@ -1454,6 +1465,8 @@ class OKXClient:
 
         return []
 
+
+atexit.register(OKXClient.close_instance)
 
 if __name__ == "__main__":
     # 测试OKX客户端
