@@ -12596,3 +12596,5 @@ src.core.exception.APIException: 市场分析失败: DeepSeek API客户端错误
 2025-11-06 20:57:29 - main - INFO - info:138 - 开始采集行情数据...
 2025-11-06 20:57:29 - main - INFO - info:138 - [行情数据] 交易对: SOL-USDT-SWAP | 价格: 158.66 | 24h涨跌: 0.33% | 24h成交量: 31414674.06 | 24h最高: 166.4 | 24h最低: 157.8 | 买一价: 158.66 | 卖一价: 158.74
 2025-11-06 20:57:29 - main - INFO - info:138 - 数据采集完成，耗时0.28秒
+2025-11-07 06:30:22 - okx_client - WARNING - warning:142 - OKX API密钥未配置，请检查配置
+2025-11-07 06:30:22 - okx_client - WARNING - warning:142 - OKX API密钥未配置，请检查配置
