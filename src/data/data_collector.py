@@ -22,7 +22,7 @@ class DataCollector:
         """初始化数据采集器"""
         self.config_mgr = get_config_manager()
         self.logger = get_logger("data_collector")
-        self.okx_client = OKXClient()
+        self.okx_client = OKXClient.get_instance()
 
         # 获取配置
         self.trading_pairs = self.config_mgr.get_config("trading", "trading_pairs")

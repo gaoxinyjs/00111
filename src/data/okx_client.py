@@ -1457,7 +1457,7 @@ class OKXClient:
 
 if __name__ == "__main__":
     # 测试OKX客户端
-    client = OKXClient()
+    client = OKXClient.get_instance()
 
     # 测试获取行情
     try:

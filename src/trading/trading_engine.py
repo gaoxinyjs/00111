@@ -43,7 +43,7 @@ class TradingEngine:
         self.position_controller = PositionController()
         self.position_manager = PositionManager()
         self.profit_statistics = ProfitStatistics()
-        self.okx_client = OKXClient()
+        self.okx_client = OKXClient.get_instance()
 
         # 多时间周期分析器
         from ..analysis.multi_timeframe_analyzer import MultiTimeframeAnalyzer
