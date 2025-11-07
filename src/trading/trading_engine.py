@@ -262,16 +262,16 @@ class TradingEngine:
 
                 try:
                     # 获取行情
-                    ticker = await self.data_collector.collect_ticker_async(symbol)
+                    ticker = await self.data_collector.collect_ticker(symbol)
 
                     # 获取多时间周期K线数据（15m, 1H, 4H）
-                    kline_15m = await self.data_collector.collect_kline_async(
+                    kline_15m = await self.data_collector.collect_kline(
                         symbol, "15m", 100
                     )
-                    kline_1h = await self.data_collector.collect_kline_async(
+                    kline_1h = await self.data_collector.collect_kline(
                         symbol, "1H", 100
                     )
-                    kline_4h = await self.data_collector.collect_kline_async(
+                    kline_4h = await self.data_collector.collect_kline(
                         symbol, "4H", 100
                     )
 
@@ -338,7 +338,7 @@ class TradingEngine:
                     # 收集订单簿数据（用于做市商意图分析）
                     orderbook_data = {}
                     try:
-                        orderbook = await self.data_collector.collect_orderbook_async(
+                        orderbook = await self.data_collector.collect_orderbook(
                             symbol, 20
                         )
                         if orderbook:
@@ -875,7 +875,7 @@ class TradingEngine:
                     if not symbol_market_data:
                         # 如果没有市场数据，尝试从ticker获取价格
                         try:
-                            ticker = await self.data_collector.collect_ticker_async(
+                            ticker = await self.data_collector.collect_ticker(
                                 symbol
                             )
                             if ticker:
@@ -1506,9 +1506,7 @@ class TradingEngine:
                     if not symbol_market_data:
                         # 如果没有市场数据，尝试获取
                         try:
-                            ticker = await self.data_collector.collect_ticker_async(
-                                symbol
-                            )
+                            ticker = await self.data_collector.collect_ticker(symbol)
                             if ticker:
                                 symbol_market_data = {
                                     "symbol": symbol,
@@ -1736,9 +1734,7 @@ class TradingEngine:
                         if not symbol_market_data:
                             # 如果没有市场数据，尝试获取
                             try:
-                                ticker = await self.data_collector.collect_ticker_async(
-                                    symbol
-                                )
+                                ticker = await self.data_collector.collect_ticker(symbol)
                                 if ticker:
                                     symbol_market_data = {
                                         "symbol": symbol,

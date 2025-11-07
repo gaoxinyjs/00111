@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Callable
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
-from ..data.okx_client import OKXClient
+from ..data.okx_client import OKXClient, get_okx_client
 from ..core.exception import DataException
 
 
@@ -22,7 +22,7 @@ class DataCollector:
         """初始化数据采集器"""
         self.config_mgr = get_config_manager()
         self.logger = get_logger("data_collector")
-        self.okx_client = OKXClient.get_instance()
+        self.okx_client: Optional[OKXClient] = None  # 延迟初始化
 
         # 获取配置
         self.trading_pairs = self.config_mgr.get_config("trading", "trading_pairs")
@@ -64,6 +64,12 @@ class DataCollector:
                 callback(data)
             except Exception as e:
                 self.logger.error(f"回调函数执行失败: {e}")
+
+    async def _ensure_client(self) -> OKXClient:
+        """确保 OKX 客户端已初始化"""
+        if self.okx_client is None:
+            self.okx_client = await get_okx_client()
+        return self.okx_client
 
     def _process_ticker_data(self, symbol: str, ticker_data: Any) -> Dict[str, Any]:
         """处理 ticker 响应"""
@@ -179,170 +185,66 @@ class DataCollector:
         else:
             raise DataException(f"K线数据格式异常: {symbol}")
 
-    def collect_ticker(self, symbol: str) -> Dict[str, Any]:
-        """
-        采集行情数据
-
-        Args:
-            symbol: 交易对符号
-
-        Returns:
-            行情数据
-        """
+    async def collect_ticker(self, symbol: str) -> Dict[str, Any]:
+        """采集行情数据（异步）"""
         try:
-            ticker_data = self.okx_client.get_ticker(symbol)
+            client = await self._ensure_client()
+            ticker_data = await client.get_ticker_async(symbol)
             return self._process_ticker_data(symbol, ticker_data)
         except Exception as e:
             self.logger.error(f"采集行情数据失败 {symbol}: {e}")
             raise DataException(f"采集行情数据失败: {e}")
 
-    async def collect_ticker_async(self, symbol: str) -> Dict[str, Any]:
-        """异步采集行情数据"""
+    async def collect_orderbook(self, symbol: str, depth: int = 20) -> Dict[str, Any]:
+        """采集订单簿数据（异步）"""
         try:
-            ticker_data = await self.okx_client.get_ticker_async(symbol)
-            return self._process_ticker_data(symbol, ticker_data)
-        except Exception as e:
-            self.logger.error(f"采集行情数据失败 {symbol} (async): {e}")
-            raise DataException(f"采集行情数据失败: {e}")
-
-    def collect_orderbook(self, symbol: str, depth: int = 20) -> Dict[str, Any]:
-        """
-        采集订单簿数据
-
-        Args:
-            symbol: 交易对符号
-            depth: 深度
-
-        Returns:
-            订单簿数据
-        """
-        try:
-            orderbook_data = self.okx_client.get_orderbook(symbol, depth)
+            client = await self._ensure_client()
+            orderbook_data = await client.get_orderbook_async(symbol, depth)
             return self._process_orderbook_data(symbol, orderbook_data)
         except Exception as e:
             self.logger.error(f"采集订单簿数据失败 {symbol}: {e}")
             raise DataException(f"采集订单簿数据失败: {e}")
 
-    async def collect_orderbook_async(
-        self, symbol: str, depth: int = 20
-    ) -> Dict[str, Any]:
-        """异步采集订单簿数据"""
-        try:
-            orderbook_data = await self.okx_client.get_orderbook_async(symbol, depth)
-            return self._process_orderbook_data(symbol, orderbook_data)
-        except Exception as e:
-            self.logger.error(f"采集订单簿数据失败 {symbol} (async): {e}")
-            raise DataException(f"采集订单簿数据失败: {e}")
-
-    def collect_kline(
+    async def collect_kline(
         self, symbol: str, interval: str = "1H", limit: int = 100
     ) -> List[Dict[str, Any]]:
-        """
-        采集K线数据
-
-        Args:
-            symbol: 交易对符号
-            interval: 时间间隔
-            limit: 返回数量
-
-        Returns:
-            K线数据列表
-        """
+        """采集K线数据（异步）"""
         try:
-            kline_data = self.okx_client.get_kline(symbol, interval, limit)
+            client = await self._ensure_client()
+            kline_data = await client.get_kline_async(symbol, interval, limit)
             return self._process_kline_data(symbol, interval, kline_data)
         except Exception as e:
             self.logger.error(f"采集K线数据失败 {symbol}: {e}")
             raise DataException(f"采集K线数据失败: {e}")
 
-    async def collect_kline_async(
-        self, symbol: str, interval: str = "1H", limit: int = 100
-    ) -> List[Dict[str, Any]]:
-        """异步采集K线数据"""
-        try:
-            kline_data = await self.okx_client.get_kline_async(symbol, interval, limit)
-            return self._process_kline_data(symbol, interval, kline_data)
-        except Exception as e:
-            self.logger.error(f"采集K线数据失败 {symbol} (async): {e}")
-            raise DataException(f"采集K线数据失败: {e}")
-
-    def collect_all_tickers(self) -> Dict[str, Dict[str, Any]]:
-        """
-        采集所有交易对的行情数据
-
-        Returns:
-            所有交易对的行情数据
-        """
-        all_tickers = {}
-
+    async def collect_all_tickers(self) -> Dict[str, Dict[str, Any]]:
+        """采集所有交易对的行情数据（异步）"""
+        all_tickers: Dict[str, Dict[str, Any]] = {}
         for pair in self.trading_pairs:
             if pair.get("enabled", True):
                 symbol = pair.get("symbol")
                 try:
-                    ticker = self.collect_ticker(symbol)
+                    ticker = await self.collect_ticker(symbol)
                     all_tickers[symbol] = ticker
-
-                    # 避免API限流
-                    time.sleep(0.1)
+                    await asyncio.sleep(0.1)
                 except Exception as e:
                     self.logger.error(f"采集{symbol}行情失败: {e}")
-
         return all_tickers
 
-    async def collect_all_tickers_async(self) -> Dict[str, Dict[str, Any]]:
-        """异步采集所有交易对的行情数据"""
-        all_tickers = {}
-        for pair in self.trading_pairs:
-            if pair.get("enabled", True):
-                symbol = pair.get("symbol")
-                try:
-                    ticker = await self.collect_ticker_async(symbol)
-                    all_tickers[symbol] = ticker
-                    await asyncio.sleep(0.1)
-                except Exception as e:
-                    self.logger.error(f"采集{symbol}行情失败(async): {e}")
-        return all_tickers
-
-    def collect_all_orderbooks(self, depth: int = 20) -> Dict[str, Dict[str, Any]]:
-        """
-        采集所有交易对的订单簿数据
-
-        Args:
-            depth: 深度
-
-        Returns:
-            所有交易对的订单簿数据
-        """
-        all_orderbooks = {}
-
-        for pair in self.trading_pairs:
-            if pair.get("enabled", True):
-                symbol = pair.get("symbol")
-                try:
-                    orderbook = self.collect_orderbook(symbol, depth)
-                    all_orderbooks[symbol] = orderbook
-
-                    # 避免API限流
-                    time.sleep(0.1)
-                except Exception as e:
-                    self.logger.error(f"采集{symbol}订单簿失败: {e}")
-
-        return all_orderbooks
-
-    async def collect_all_orderbooks_async(
+    async def collect_all_orderbooks(
         self, depth: int = 20
     ) -> Dict[str, Dict[str, Any]]:
-        """异步采集所有交易对的订单簿数据"""
-        all_orderbooks = {}
+        """采集所有交易对的订单簿数据（异步）"""
+        all_orderbooks: Dict[str, Dict[str, Any]] = {}
         for pair in self.trading_pairs:
             if pair.get("enabled", True):
                 symbol = pair.get("symbol")
                 try:
-                    orderbook = await self.collect_orderbook_async(symbol, depth)
+                    orderbook = await self.collect_orderbook(symbol, depth)
                     all_orderbooks[symbol] = orderbook
                     await asyncio.sleep(0.1)
                 except Exception as e:
-                    self.logger.error(f"采集{symbol}订单簿失败(async): {e}")
+                    self.logger.error(f"采集{symbol}订单簿失败: {e}")
         return all_orderbooks
 
     async def start_collection_loop(self):
@@ -357,12 +259,12 @@ class DataCollector:
 
                 # 采集所有交易对的行情数据
                 self.logger.info("开始采集行情数据...")
-                await self.collect_all_tickers_async()
+                await self.collect_all_tickers()
 
                 # 采集订单簿数据（可选，避免频率过高）
                 if int(time.time()) % (self.collection_interval * 2) == 0:
                     self.logger.info("开始采集订单簿数据...")
-                    await self.collect_all_orderbooks_async()
+                    await self.collect_all_orderbooks()
 
                 elapsed = time.time() - start_time
                 self.logger.info(f"数据采集完成，耗时{elapsed:.2f}秒")
@@ -408,20 +310,23 @@ if __name__ == "__main__":
     # 测试数据采集器
     collector = DataCollector()
 
-    # 测试采集单个交易对数据
-    print("测试采集BTC-USDT行情...")
-    try:
-        ticker = collector.collect_ticker("BTC-USDT")
-        print(f"行情数据: {ticker}")
-    except Exception as e:
-        print(f"采集失败: {e}")
+    async def _demo():
+        # 测试采集单个交易对数据
+        print("测试采集BTC-USDT行情...")
+        try:
+            ticker = await collector.collect_ticker("BTC-USDT")
+            print(f"行情数据: {ticker}")
+        except Exception as exc:
+            print(f"采集失败: {exc}")
 
-    print("\n测试采集订单簿...")
-    try:
-        orderbook = collector.collect_orderbook("BTC-USDT", depth=10)
-        print(
-            f"订单簿深度: 买盘{len(orderbook['bids'])}档, 卖盘{len(orderbook['asks'])}档"
-        )
-        print(f"买卖价差: {orderbook['spread']}")
-    except Exception as e:
-        print(f"采集失败: {e}")
+        print("\n测试采集订单簿...")
+        try:
+            orderbook = await collector.collect_orderbook("BTC-USDT", depth=10)
+            print(
+                f"订单簿深度: 买盘{len(orderbook['bids'])}档, 卖盘{len(orderbook['asks'])}档"
+            )
+            print(f"买卖价差: {orderbook['spread']}")
+        except Exception as exc:
+            print(f"采集失败: {exc}")
+
+    asyncio.run(_demo())

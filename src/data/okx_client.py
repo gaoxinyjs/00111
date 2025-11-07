@@ -1466,6 +1466,13 @@ class OKXClient:
         return []
 
 
+async def get_okx_client() -> OKXClient:
+    """获取已经初始化的 OKXClient 单例（异步确保会话可用）"""
+    client = OKXClient.get_instance()
+    await client._ensure_session()
+    return client
+
+
 atexit.register(OKXClient.close_instance)
 
 if __name__ == "__main__":
