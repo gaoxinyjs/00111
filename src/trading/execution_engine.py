@@ -115,7 +115,7 @@ class ExecutionEngine:
                 # 尝试从决策中获取当前市场价格（如果有market_data的话）
                 if hasattr(decision, "risk_assessment") and decision.risk_assessment:
                     # 尝试从其他地方获取当前价格
-                    ticker = self.okx_client.get_ticker(symbol)
+                    ticker = await self.okx_client.get_ticker_async(symbol)
                     if ticker and isinstance(ticker, dict):
                         if ticker.get("code") == "0":
                             data = ticker.get("data", [])
@@ -159,7 +159,7 @@ class ExecutionEngine:
                     margin_mode = api_config.get("trade_mode", "cross")  # 默认全仓
 
                     # 设置杠杆
-                    self.okx_client.set_leverage(symbol, leverage, margin_mode)
+                    await self.okx_client.set_leverage_async(symbol, leverage, margin_mode)
                     self.logger.info(
                         f"已设置杠杆: {symbol}, 杠杆倍数={leverage}x, 保证金模式={margin_mode}"
                     )
@@ -174,7 +174,7 @@ class ExecutionEngine:
 
                 try:
                     # 获取账户余额（合约账户使用币种为USDT）
-                    balance_data = self.okx_client.get_balance("USDT")
+                    balance_data = await self.okx_client.get_balance_async("USDT")
 
                     # 计算可用余额
                     if balance_data:
@@ -228,7 +228,7 @@ class ExecutionEngine:
                 if price and price > 0:
                     # 获取合约信息，确定lot size（合约面值）
                     try:
-                        instruments = self.okx_client.get_instruments("SWAP", symbol)
+                        instruments = await self.okx_client.get_instruments_async("SWAP", symbol)
 
                         lot_size = 1.0  # 默认lot size
                         min_size = 0.001  # 默认最小订单数量
@@ -295,7 +295,7 @@ class ExecutionEngine:
             # 确保数量精度（根据合约信息）
             try:
                 # 获取合约信息以确定lotSz和minSz
-                instruments = self.okx_client.get_instruments("SWAP", symbol)
+                instruments = await self.okx_client.get_instruments_async("SWAP", symbol)
 
                 lot_size = 0.1  # 默认值
                 min_size = 0.1  # 默认值
