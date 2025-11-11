@@ -6,8 +6,10 @@
 """
 
 import time
+import math
 from typing import Dict, Optional, Any, List
 from datetime import datetime
+from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
 from ..trading.order_manager import OrderManager, Order, OrderStatus
@@ -24,6 +26,27 @@ class ExecutionEngine:
         self.logger = get_logger("execution_engine")
         self.order_manager = OrderManager()
         
+        # 风险与趋势控制默认配置（可通过配置文件覆盖）
+        default_risk_config = {
+            'per_trade_risk_pct': 0.005,  # 单笔风险占账户余额比例
+            'atr_period': 14,
+            'atr_stop_multiplier': 1.2,
+            'atr_take_profit_multiplier': 2.5,
+            'take_profit_to_stop_ratio': 2.0,
+            'min_stop_ticks': 6,
+            'volatility_interval': '15m',
+            'trend_interval': '30m',
+            'trend_window': 10,
+            'trend_min_slope': 0.0
+        }
+        try:
+            risk_config_override = self.config_mgr.get_config('trading', 'risk_management', {}) or {}
+            if isinstance(risk_config_override, dict):
+                default_risk_config.update(risk_config_override)
+        except Exception as err:
+            self.logger.warning(f"加载风险管理配置失败，使用默认配置: {err}")
+        self.risk_config = default_risk_config
+        
         # 执行统计
         self.execution_stats = {
             'total_orders': 0,
@@ -32,6 +55,70 @@ class ExecutionEngine:
             'total_slippage': 0.0,
             'avg_execution_time': 0.0
         }
+    
+    @staticmethod
+    def _align_price_to_tick(price: float, tick_size: float, direction: str = 'nearest') -> float:
+        """按照交易所要求将价格对齐到最小变动单位"""
+        if price is None:
+            return price
+        if not tick_size or tick_size <= 0:
+            return float(price)
+        dec_price = Decimal(str(price))
+        quantum = Decimal(str(tick_size))
+        if direction == 'up':
+            aligned = (dec_price / quantum).to_integral_value(rounding=ROUND_CEILING) * quantum
+        elif direction == 'down':
+            aligned = (dec_price / quantum).to_integral_value(rounding=ROUND_FLOOR) * quantum
+        else:
+            aligned = dec_price.quantize(quantum)
+        return float(aligned)
+    
+    def _adjust_sl_tp_prices(
+        self,
+        side: str,
+        entry_price: Optional[float],
+        stop_loss: Optional[float],
+        take_profit: Optional[float],
+        tick_size: float,
+    ) -> tuple:
+        """根据方向对止损止盈做安全调整，避免违反交易所约束"""
+        if entry_price is None:
+            return stop_loss, take_profit
+        entry_price = float(entry_price)
+        tick = tick_size if tick_size and tick_size > 0 else 0.0001
+        stop = float(stop_loss) if stop_loss is not None else None
+        take = float(take_profit) if take_profit is not None else None
+        if side == 'buy':
+            if stop is not None:
+                if stop >= entry_price:
+                    stop = entry_price - tick
+                stop = self._align_price_to_tick(stop, tick, 'down')
+                while stop >= entry_price:
+                    stop -= tick
+            if take is not None:
+                if take <= entry_price:
+                    take = entry_price + tick
+                take = self._align_price_to_tick(take, tick, 'up')
+                while take <= entry_price:
+                    take += tick
+        else:  # sell / short
+            if stop is not None:
+                if stop <= entry_price:
+                    stop = entry_price + tick
+                stop = self._align_price_to_tick(stop, tick, 'up')
+                while stop <= entry_price:
+                    stop += tick
+            if take is not None:
+                if take >= entry_price:
+                    take = entry_price - tick
+                take = self._align_price_to_tick(take, tick, 'down')
+                while take >= entry_price:
+                    take -= tick
+        if stop is not None and stop <= 0:
+            stop = self._align_price_to_tick(entry_price - tick, tick, 'down')
+        if take is not None and take <= 0:
+            take = self._align_price_to_tick(entry_price - tick, tick, 'down')
+        return stop, take
     
     async def execute_decision(self, decision: TradingDecision) -> Optional[Order]:
         """
@@ -73,6 +160,8 @@ class ExecutionEngine:
                     return None
                 # check_result == 'ok' 表示没有持仓，继续执行
             
+            instrument_info: Optional[Dict[str, Any]] = None
+
             # 合约交易：转换action为side
             # long做多 -> buy
             # short做空 -> sell
@@ -106,17 +195,14 @@ class ExecutionEngine:
             price = decision.price
             current_market_price = None
             try:
-                # 尝试从决策中获取当前市场价格（如果有market_data的话）
-                if hasattr(decision, 'risk_assessment') and decision.risk_assessment:
-                    # 尝试从其他地方获取当前价格
-                    from ..data.okx_client import OKXClient
-                    okx_client_temp = OKXClient()
-                    ticker = okx_client_temp.get_ticker(symbol)
-                    if ticker and isinstance(ticker, dict):
-                        if ticker.get('code') == '0':
-                            data = ticker.get('data', [])
-                            if data and len(data) > 0:
-                                current_market_price = float(data[0].get('last', 0))
+                from ..data.okx_client import OKXClient
+                okx_client_temp = OKXClient()
+                ticker = okx_client_temp.get_ticker(symbol)
+                if ticker and isinstance(ticker, dict):
+                    if ticker.get('code') == '0':
+                        data = ticker.get('data', [])
+                        if data and len(data) > 0:
+                            current_market_price = float(data[0].get('last', 0))
             except Exception:
                 pass
             
@@ -133,6 +219,26 @@ class ExecutionEngine:
                 order_type = 'market'  # 使用市价单
                 price = None  # 市价单不需要价格
                 self.logger.info(f"[订单类型] {symbol}: {action_desc} | 使用市价单（未计算最佳价格）")
+            
+            # 获取市场波动和趋势信息
+            market_context = await self._fetch_market_context(symbol)
+            atr_value = market_context.get('atr')
+            trend_slope = market_context.get('trend_slope')
+            trend_min_slope = float(self.risk_config.get('trend_min_slope', 0.0) or 0.0)
+            if decision.action == 'long' and trend_slope is not None and trend_slope < -trend_min_slope:
+                self.logger.info(
+                    f"❌ {symbol}: 30分钟趋势向下(斜率={trend_slope:.5f})，拒绝做多以避免逆势"  # noqa: E501
+                )
+                return None
+            if decision.action == 'short' and trend_slope is not None and trend_slope > trend_min_slope:
+                self.logger.info(
+                    f"❌ {symbol}: 30分钟趋势向上(斜率={trend_slope:.5f})，拒绝做空以避免逆势"  # noqa: E501
+                )
+                return None
+            if atr_value is not None:
+                self.logger.info(
+                    f"[波动率] {symbol}: {self.risk_config.get('volatility_interval', '15m')} ATR≈{atr_value:.5f}"
+                )
             
             # 0. 设置杠杆倍数（合约交易需要先设置杠杆）
             try:
@@ -159,175 +265,73 @@ class ExecutionEngine:
             except Exception as e:
                 self.logger.warning(f"设置杠杆失败: {e}，继续执行交易")
             
-            # 计算实际交易数量（根据账户余额和仓位比例）
-            # 对于合约交易，直接使用固定余额或配置值，避免API调用失败影响交易
+            # 计算实际交易数量（根据账户余额、仓位比例与风险参数）
+            available_balance = 0.0
+            position_value = 0.0
+            base_size_by_value = 0.0
+            price_for_calc = price if price and price > 0 else current_market_price
+            if not price_for_calc or price_for_calc <= 0:
+                self.logger.warning(f"价格数据无效，无法计算下单数量: price={price}, market={current_market_price}")
+                return None
+            lot_size = 1.0
+            min_size = 0.001
+            ct_val = 1.0
+            tick_size = 0.01
             try:
-                # 优先尝试获取账户余额，但如果失败则使用配置的默认值
-                available_balance = 0.0
-                
+                try:
+                    from ..data.okx_client import get_okx_client
+                    okx_client = await get_okx_client()
+                    balance_data = await okx_client.async_get_balance('USDT')
+                    if balance_data:
+                        if isinstance(balance_data, dict) and balance_data.get('code') == '0':
+                            for item in balance_data.get('data', []) or []:
+                                for detail in item.get('details', []) or []:
+                                    if detail.get('ccy') == 'USDT' and detail.get('availBal'):
+                                        available_balance = float(detail.get('availBal', 0))
+                                        break
+                        elif isinstance(balance_data, list):
+                            for item in balance_data:
+                                for detail in item.get('details', []) or []:
+                                    if detail.get('ccy') == 'USDT' and detail.get('availBal'):
+                                        available_balance = float(detail.get('availBal', 0))
+                                        break
+                    if available_balance > 0:
+                        self.logger.info(f"获取账户余额成功: {available_balance:.2f} USDT")
+                except Exception as api_error:
+                    self.logger.warning(f"获取账户余额失败: {api_error}，改用配置默认值")
+                if available_balance == 0:
+                    default_balance = self.config_mgr.get_config('trading', 'auto_trading', {}).get('default_balance', 10000.0)
+                    available_balance = float(default_balance)
+                    self.logger.info(f"使用默认余额: {available_balance:.2f} USDT")
+                position_value = available_balance * decision.position_size
+                # 获取合约信息，确定lot size / tick size等
                 try:
                     from ..data.okx_client import OKXClient
-                    okx_client = OKXClient()
-                    
-                    # 获取账户余额（合约账户使用币种为USDT）
-                    balance_data = okx_client.get_balance('USDT')
-                    
-                    # 计算可用余额
-                    if balance_data:
-                        # OKX API返回格式：{"code":"0","data":[{"details":[...]}]}
-                        if isinstance(balance_data, dict):
-                            # 检查返回码
-                            if balance_data.get('code') == '0':
-                                data = balance_data.get('data', [])
-                                if data and isinstance(data, list) and len(data) > 0:
-                                    for item in data:
-                                        details = item.get('details', [])
-                                        if details:
-                                            for detail in details:
-                                                if detail.get('ccy') == 'USDT' and detail.get('availBal'):
-                                                    available_balance = float(detail.get('availBal', 0))
-                                                    break
-                        elif isinstance(balance_data, list) and len(balance_data) > 0:
-                            for item in balance_data:
-                                details = item.get('details', [])
-                                if details:
-                                    for detail in details:
-                                        if detail.get('ccy') == 'USDT' and detail.get('availBal'):
-                                            available_balance = float(detail.get('availBal', 0))
-                                            break
-                    
-                    if available_balance > 0:
-                        self.logger.info(f"获取账户余额成功: {available_balance} USDT")
-                    
-                except Exception as api_error:
-                    self.logger.warning(f"获取账户余额失败: {api_error}，使用默认配置")
-                
-                # 如果没有余额信息或获取失败，使用默认值或从配置读取
-                if available_balance == 0:
-                    # 从配置读取默认余额，如果没有则使用10000 USDT
-                    default_balance = self.config_mgr.get_config('trading', 'auto_trading', {}).get('default_balance', 10000.0)
-                    available_balance = default_balance
-                    self.logger.info(f"使用默认余额: {available_balance} USDT")
-                
-                # 计算交易数量（仓位比例 * 可用余额 / 价格）
-                # 合约交易：size是合约数量，不是USDT数量
-                if price and price > 0:
-                    # 获取合约信息，确定lot size（合约面值）
-                    try:
-                        from ..data.okx_client import OKXClient
-                        okx_client_temp = OKXClient()
-                        instruments = okx_client_temp.get_instruments("SWAP", symbol)
-                        
-                        lot_size = 1.0  # 默认lot size
-                        min_size = 0.001  # 默认最小订单数量
-                        ct_val = 1.0  # 合约面值
-                        
-                        if instruments and isinstance(instruments, list) and len(instruments) > 0:
-                            instrument_info = instruments[0]
-                            lot_size = float(instrument_info.get('lotSz', 1.0))  # 最小下单单位
-                            min_size = float(instrument_info.get('minSz', 0.001))  # 最小订单数量
-                            ct_val = float(instrument_info.get('ctVal', 1.0))  # 合约面值
-                            
-                            self.logger.info(
-                                f"[合约信息] {symbol}: lotSize={lot_size}, minSize={min_size}, ctVal={ct_val}"
-                            )
-                    except Exception as e:
-                        self.logger.warning(f"获取合约信息失败: {e}，使用默认值")
-                    
-                    # 计算合约数量（根据仓位比例）
-                    position_value = available_balance * decision.position_size
-                    size = position_value / (price * ct_val)  # 合约数量（考虑合约面值）
-                    
-                    # 将数量调整为lot_size的倍数
-                    if lot_size > 0:
-                        size = int(size / lot_size) * lot_size
-                    
-                    # 确保最小订单数量
-                    if size < min_size:
-                        self.logger.warning(f"计算出的数量({size})小于最小订单数量({min_size})，调整到最小值")
-                        size = min_size
-                        # 确保是最小值的倍数
-                        if lot_size > 0:
-                            size = int(size / lot_size + 0.5) * lot_size
-                else:
-                    self.logger.warning(f"价格无效，无法计算数量")
+                    okx_client_temp = OKXClient()
+                    instruments = okx_client_temp.get_instruments("SWAP", symbol)
+                    if instruments and isinstance(instruments, list):
+                        instrument_info = instruments[0]
+                        lot_size = float(instrument_info.get('lotSz', lot_size))
+                        min_size = float(instrument_info.get('minSz', min_size))
+                        ct_val = float(instrument_info.get('ctVal', ct_val))
+                        tick_size = float(instrument_info.get('tickSz', tick_size)) if instrument_info.get('tickSz') else tick_size
+                        self.logger.info(
+                            f"[合约信息] {symbol}: lotSize={lot_size}, minSize={min_size}, ctVal={ct_val}, tickSz={tick_size}"
+                        )
+                except Exception as e:
+                    self.logger.warning(f"获取合约信息失败: {e}，使用默认合约参数")
+                if ct_val <= 0:
+                    ct_val = 1.0
+                base_size_by_value = position_value / (price_for_calc * ct_val)
+                if base_size_by_value <= 0:
+                    self.logger.warning(f"根据仓位比例计算的名义合约数量无效: {base_size_by_value}")
                     return None
-                
-                self.logger.info(
-                    f"[执行决策] {symbol}: {action_desc}({position_side}) | "
-                    f"仓位比例: {decision.position_size:.2%} | "
-                    f"价格: {price} | "
-                    f"数量: {size:.4f} | "
-                    f"价值: {position_value:.2f} USDT"
-                )
-                
             except Exception as e:
-                self.logger.error(f"计算交易数量失败: {e}")
+                self.logger.error(f"计算基础仓位失败: {e}")
                 return None
-            
             
             # 3. 创建订单（合约交易：设置持仓方向和是否平仓）
             is_closing = decision.action in ['close_long', 'close_short']
-            
-            # 确保数量精度（根据合约信息）
-            try:
-                # 获取合约信息以确定lotSz和minSz
-                from ..data.okx_client import OKXClient
-                okx_client_temp = OKXClient()
-                instruments = okx_client_temp.get_instruments("SWAP", symbol)
-                
-                lot_size = 0.1  # 默认值
-                min_size = 0.1  # 默认值
-                
-                if instruments and isinstance(instruments, list) and len(instruments) > 0:
-                    instrument_info = instruments[0]
-                    lot_size = float(instrument_info.get('lotSz', 0.1))  # 最小下单单位
-                    min_size = float(instrument_info.get('minSz', 0.1))  # 最小订单数量
-                    
-                    # 将数量调整为lot_size的精确倍数（使用Decimal确保精度）
-                    if lot_size > 0:
-                        from decimal import Decimal, ROUND_DOWN, ROUND_UP
-                        
-                        lot_decimal = Decimal(str(lot_size))
-                        size_decimal = Decimal(str(size))
-                        
-                        # 计算应该是lot_size的多少倍（向下取整）
-                        lots = int(size_decimal / lot_decimal)
-                        size_decimal = Decimal(str(lots)) * lot_decimal
-                        
-                        # 如果数量小于最小订单数量，向上取整到lot_size的倍数
-                        min_decimal = Decimal(str(min_size))
-                        if size_decimal < min_decimal:
-                            lots = int((min_decimal / lot_decimal).quantize(Decimal('1'), rounding=ROUND_UP))
-                            size_decimal = Decimal(str(lots)) * lot_decimal
-                        
-                        # 转换为float（但确保是精确倍数）
-                        size = float(size_decimal)
-                        
-                        # 最终验证：确保是lot_size的精确倍数
-                        lots_final = round(size / lot_size)
-                        size = lots_final * lot_size
-                        
-                        # 确保不小于最小订单数量
-                        if size < min_size:
-                            lots_final = math.ceil(min_size / lot_size)
-                            size = lots_final * lot_size
-                    
-                    self.logger.info(
-                        f"[订单数量] {symbol}: lotSize={lot_size}, minSize={min_size}, 调整后数量={size} (验证倍数: {size % lot_size if lot_size > 0 else 0})"
-                    )
-                else:
-                    # 如果没有获取到合约信息，使用配置值
-                    trading_pairs = self.config_mgr.get_config('trading', 'trading_pairs')
-                    pair_config = next((p for p in trading_pairs if p.get('symbol') == symbol), {})
-                    size_precision = pair_config.get('size_precision', 4)
-                    size = round(size, size_precision)
-                    min_order_size = pair_config.get('min_order_size', 0.001)
-                    if size < min_order_size:
-                        size = min_order_size
-                        
-            except Exception as e:
-                self.logger.warning(f"格式化订单数量失败: {e}，使用原始值")
             
             # 合约交易：对于单向持仓模式，使用"net"而不是具体的long/short
             # 只有在平仓或明确需要双向持仓时才使用long/short
@@ -336,44 +340,74 @@ class ExecutionEngine:
                 # 平仓时使用具体的posSide
                 pos_side_for_order = position_side
             
-            # 确保数量是精确的lotSize倍数（使用Decimal格式化）
-            from decimal import Decimal
-            try:
-                # 获取合约信息以确定lotSz
-                from ..data.okx_client import OKXClient
-                okx_client_temp = OKXClient()
-                instruments = okx_client_temp.get_instruments("SWAP", symbol)
-                if instruments and isinstance(instruments, list) and len(instruments) > 0:
-                    instrument_info = instruments[0]
-                    lot_size = float(instrument_info.get('lotSz', 0.1))
-                    
-                    # 使用Decimal确保数量是lotSize的精确倍数
-                    lot_decimal = Decimal(str(lot_size))
-                    size_decimal = Decimal(str(size))
-                    lots = round(float(size_decimal / lot_decimal))
-                    size_decimal = Decimal(str(lots)) * lot_decimal
-                    size = float(size_decimal)
-            except Exception as e:
-                self.logger.warning(f"最终数量验证失败: {e}，使用原始值")
-            
             # 3.1. 准备止盈止损价格（在创建订单时设置）
+            size = base_size_by_value
             stop_loss_price = None
             take_profit_price = None
+            entry_price_for_sl = float(price_for_calc)
+            tick_size = tick_size if tick_size and tick_size > 0 else 0.0001
+            if not is_closing:
+                min_stop_ticks = max(1, int(self.risk_config.get('min_stop_ticks', 6) or 6))
+                min_stop_distance = tick_size * min_stop_ticks
+                atr_stop_multiplier = float(self.risk_config.get('atr_stop_multiplier', 1.2) or 1.2)
+                atr_tp_multiplier = float(self.risk_config.get('atr_take_profit_multiplier', 2.5) or 2.5)
+                tp_stop_ratio = float(self.risk_config.get('take_profit_to_stop_ratio', 2.0) or 2.0)
+                base_stop_distance = (atr_value or 0.0) * atr_stop_multiplier
+                base_tp_distance = (atr_value or 0.0) * atr_tp_multiplier
+                stop_distance = max(base_stop_distance, min_stop_distance)
+                take_profit_distance = max(base_tp_distance, stop_distance * tp_stop_ratio)
+                if decision.action in ['long', 'buy']:
+                    stop_loss_price = entry_price_for_sl - stop_distance
+                    take_profit_price = entry_price_for_sl + take_profit_distance
+                elif decision.action in ['short', 'sell']:
+                    stop_loss_price = entry_price_for_sl + stop_distance
+                    take_profit_price = entry_price_for_sl - take_profit_distance
+                else:
+                    stop_loss_price = None
+                    take_profit_price = None
+                stop_loss_price, take_profit_price = self._adjust_sl_tp_prices(
+                    side=side,
+                    entry_price=entry_price_for_sl,
+                    stop_loss=stop_loss_price,
+                    take_profit=take_profit_price,
+                    tick_size=tick_size,
+                )
+                risk_pct = float(self.risk_config.get('per_trade_risk_pct', 0.005) or 0.005)
+                risk_amount = available_balance * risk_pct
+                stop_distance_abs = abs(stop_loss_price - entry_price_for_sl) if stop_loss_price else 0.0
+                if stop_distance_abs > 0:
+                    risk_based_size = risk_amount / (stop_distance_abs * ct_val)
+                    if risk_based_size <= 0:
+                        self.logger.warning(f"风险控制计算出的下单数量无效: {risk_based_size}")
+                        return None
+                    size = min(base_size_by_value, risk_based_size)
+                else:
+                    self.logger.warning("风险控制：无法计算有效的止损距离，使用仓位限制进行下单")
+                    size = base_size_by_value
+                if size <= 0:
+                    self.logger.warning(f"最终下单数量无效，停止执行: size={size}")
+                    return None
+            # 调整数量至交易所允许的精度
+            if lot_size > 0:
+                lots = max(1, math.floor(size / lot_size))
+                size = lots * lot_size
+            if size < min_size:
+                size = math.ceil(min_size / lot_size) * lot_size if lot_size > 0 else min_size
+            size = float(size)
+            position_value = size * entry_price_for_sl * ct_val
+            self.logger.info(
+                f"[执行决策] {symbol}: {action_desc}({position_side}) | 仓位比例={decision.position_size:.2%} | "
+                f"风险限额={self.risk_config.get('per_trade_risk_pct', 0.005):.3%} | 数量={size:.4f} | 名义价值≈{position_value:.2f} USDT"
+            )
             
-            # 只在开仓时设置止盈止损（不是平仓时）
-            if not is_closing and decision.stop_loss and decision.take_profit:
-                stop_loss_price = decision.stop_loss
-                take_profit_price = decision.take_profit
-                
-                # ⚠️ 重要：在设置新的止盈止损之前，先取消同方向的旧订单，避免重复
+            if not is_closing and stop_loss_price is not None and take_profit_price is not None:
                 try:
                     await self._cancel_existing_sl_tp_orders(symbol, pos_side_for_order)
                 except Exception as e:
                     self.logger.warning(f"取消旧止盈止损订单失败 {symbol}: {e}")
-                
                 self.logger.info(
-                    f"📌 [订单止盈止损] {symbol}: 在创建订单时同时设置 | "
-                    f"止损={stop_loss_price:.5f}, 止盈={take_profit_price:.5f}"
+                    f"📌 [风险控制止盈止损] {symbol}: 止损={stop_loss_price:.5f}, 止盈={take_profit_price:.5f} "
+                    f"(距离={abs(stop_loss_price - entry_price_for_sl):.5f})"
                 )
             
             order = self.order_manager.create_order(
@@ -385,121 +419,64 @@ class ExecutionEngine:
                 position_side=pos_side_for_order,  # None表示"net"模式
                 is_closing=is_closing  # 合约交易：是否平仓
             )
+            order.attach_sl_tp_on_submit = False
+            order.decision_price = entry_price_for_sl
             
-            # 将止盈止损价格设置到订单对象中
+            # 将止盈止损价格设置到订单对象中（用于成交后设置）
             if stop_loss_price:
                 order.stop_loss_price = stop_loss_price
             if take_profit_price:
                 order.take_profit_price = take_profit_price
             
-            # 4. 提交订单（止盈止损已在创建订单时通过 attachAlgoOrds 一次性设置）
-            # 这样可以在一个订单中同时设置开仓、止盈、止损，避免后续多次设置
+            # 4. 提交订单
             order = self.order_manager.submit_order(order)
-            
-            # 重要：止盈止损已在创建订单时通过 attachAlgoOrds 一次性设置
-            # 不需要在订单成交后再次设置，避免重复创建多个止盈止损订单
             
             # 5. 监控订单执行
             if order.status == OrderStatus.SUBMITTED:
                 # 等待订单成交
                 order = self._wait_for_execution(order, timeout=30)
             
-            # 6. 计算滑点
+            # 6. 计算滑点并设置成交后的止盈止损
             if order.status == OrderStatus.FILLED:
-                slippage = self._calculate_slippage(order, decision.price)
+                reference_price = decision.price if decision.price else entry_price_for_sl
+                slippage = self._calculate_slippage(order, reference_price)
                 self.execution_stats['total_slippage'] += slippage
-                
-                # 重要：基于实际成交价格重新计算止盈止损（止损账户盈亏2%，止盈账户盈亏5%，考虑杠杆倍数）
-                # 因为止盈止损应该基于开仓价格（实际成交价格），而不是当前市场价格
-                filled_price = order.average_price or order.filled_price or order.price
-                if filled_price and filled_price > 0:
-                    # 获取杠杆倍数
-                    leverage = 1  # 默认1倍杠杆
-                    try:
-                        trading_config = self.config_mgr.get_config('trading', 'trading_pairs')
-                        for pair in trading_config:
-                            if pair.get('symbol') == symbol:
-                                leverage = pair.get('leverage', 1)
-                                leverage = int(leverage) if leverage else 1
-                                break
-                    except Exception as e:
-                        self.logger.warning(f"获取杠杆倍数失败 {symbol}: {e}，使用默认值1")
-                    
-                    # 计算考虑杠杆倍数的止盈止损（止损账户盈亏2%，止盈账户盈亏5%）
-                    # 在杠杆交易中，账户盈亏 = 价格变动百分比 × 杠杆倍数
-                    # 所以：价格变动百分比 = 账户盈亏 / 杠杆倍数
-                    stop_loss_pnl_pct = 0.02  # 止损：账户盈亏2%
-                    take_profit_pnl_pct = 0.05  # 止盈：账户盈亏5%
-                    stop_loss_price_change_pct = stop_loss_pnl_pct / leverage
-                    take_profit_price_change_pct = take_profit_pnl_pct / leverage
-                    
-                    # 重新计算止盈止损（基于实际成交价格）
-                    actual_stop_loss = None
-                    actual_take_profit = None
-                    
-                    if decision.action == 'long':
-                        # 做多：止损在下方，止盈在上方
-                        actual_stop_loss = filled_price * (1 - stop_loss_price_change_pct)
-                        actual_take_profit = filled_price * (1 + take_profit_price_change_pct)
-                    elif decision.action == 'short':
-                        # 做空：止损在上方，止盈在下方
-                        actual_stop_loss = filled_price * (1 + stop_loss_price_change_pct)
-                        actual_take_profit = filled_price * (1 - take_profit_price_change_pct)
-                    
-                    if actual_stop_loss and actual_take_profit:
-                        self.logger.info(
-                            f"✅ {symbol}: 订单已成交，基于实际成交价格重新计算止盈止损 | "
-                            f"成交价格={filled_price:.5f} | "
-                            f"杠杆倍数={leverage}x | "
-                            f"止损价格变动={stop_loss_price_change_pct*100:.3f}% (账户盈亏2%) | "
-                            f"止盈价格变动={take_profit_price_change_pct*100:.3f}% (账户盈亏5%) | "
-                            f"止损={actual_stop_loss:.5f} | "
-                            f"止盈={actual_take_profit:.5f}"
-                        )
-                        
-                        # 更新订单的止盈止损价格（用于后续设置）
-                        order.stop_loss_price = actual_stop_loss
-                        order.take_profit_price = actual_take_profit
-                        
-                        # ⚠️ 重要：如果之前设置的止盈止损与重新计算的不一致，需要实际更新到交易所
-                        if stop_loss_price and abs(stop_loss_price - actual_stop_loss) > 0.0001:
-                            self.logger.warning(
-                                f"⚠️ {symbol}: 止盈止损价格需要更新 | "
-                                f"原止损={stop_loss_price:.5f}, 新止损={actual_stop_loss:.5f} | "
-                                f"原止盈={take_profit_price:.5f}, 新止盈={actual_take_profit:.5f} | "
-                                f"正在更新到交易所..."
-                            )
-                            
-                            # 实际更新止盈止损到交易所
-                            try:
-                                await self._update_stop_loss_take_profit(
-                                    symbol, order, actual_stop_loss, actual_take_profit, decision.action
-                                )
-                            except Exception as e:
-                                self.logger.error(f"❌ {symbol}: 更新止盈止损到交易所失败: {e}")
-                        elif not stop_loss_price or not take_profit_price:
-                            # 如果之前没有设置止盈止损，现在需要设置
-                            self.logger.warning(
-                                f"⚠️ {symbol}: 订单成交前未设置止盈止损，现在基于实际成交价格设置 | "
-                                f"杠杆倍数={leverage}x | "
-                                f"止损价格变动={stop_loss_price_change_pct*100:.3f}% (账户盈亏2%) | "
-                                f"止盈价格变动={take_profit_price_change_pct*100:.3f}% (账户盈亏5%) | "
-                                f"止损={actual_stop_loss:.5f} | "
-                                f"止盈={actual_take_profit:.5f} | "
-                                f"正在设置到交易所..."
-                            )
-                            
-                            # 实际设置止盈止损到交易所
-                            try:
-                                await self._update_stop_loss_take_profit(
-                                    symbol, order, actual_stop_loss, actual_take_profit, decision.action
-                                )
-                            except Exception as e:
-                                self.logger.error(f"❌ {symbol}: 设置止盈止损到交易所失败: {e}")
-                else:
-                    self.logger.warning(
-                        f"⚠️ {symbol}: 订单已成交，但未在开仓时设置止盈止损，请检查配置"
+                filled_price = order.average_price or order.filled_price or reference_price
+                if not is_closing and order.stop_loss_price and order.take_profit_price and filled_price:
+                    stop_distance = abs(order.stop_loss_price - entry_price_for_sl)
+                    take_distance = abs(order.take_profit_price - entry_price_for_sl)
+                    if decision.action in ['long', 'buy']:
+                        actual_stop_loss = filled_price - stop_distance
+                        actual_take_profit = filled_price + take_distance
+                    else:
+                        actual_stop_loss = filled_price + stop_distance
+                        actual_take_profit = filled_price - take_distance
+                    actual_stop_loss, actual_take_profit = self._adjust_sl_tp_prices(
+                        side=side,
+                        entry_price=filled_price,
+                        stop_loss=actual_stop_loss,
+                        take_profit=actual_take_profit,
+                        tick_size=tick_size,
                     )
+                    order.stop_loss_price = actual_stop_loss
+                    order.take_profit_price = actual_take_profit
+                    try:
+                        position_side_for_sl = 'long' if decision.action in ['long', 'buy'] else 'short'
+                        await self._set_stop_loss_take_profit(
+                            symbol=symbol,
+                            side=side,
+                            position_side=position_side_for_sl,
+                            stop_loss_price=actual_stop_loss,
+                            take_profit_price=actual_take_profit,
+                            main_order=order,
+                        )
+                        self.logger.info(
+                            f"✅ {symbol}: 成交后设置止盈止损成功 | 止损={actual_stop_loss:.5f}, 止盈={actual_take_profit:.5f}"
+                        )
+                    except Exception as e:
+                        self.logger.error(f"设置成交后止盈止损失败 {symbol}: {e}")
+                elif not is_closing:
+                    self.logger.warning(f"⚠️ {symbol}: 订单已成交，但止盈止损数据缺失，未能自动设置")
             
             # 7. 更新统计
             execution_time = time.time() - start_time
@@ -560,13 +537,11 @@ class ExecutionEngine:
             position_side: 持仓方向（long, short），如果为None则取消所有
         """
         try:
-            from ..data.okx_client import OKXClient
-            okx_client = OKXClient()
+            from ..data.okx_client import get_okx_client
+            okx_client = await get_okx_client()
             
             # 查询现有的算法订单（止盈止损订单）
-            # 查询算法订单（不传递ordType参数，让API返回所有类型的算法订单）
-            # 注意：对于通过attachAlgoOrds创建的止盈止损订单，查询时不需要传递ordType参数
-            algo_orders = okx_client.get_algo_orders(symbol=symbol, state='live', order_type=None)
+            algo_orders = await okx_client.async_get_algo_orders(symbol=symbol, state='live', order_type='conditional')
             
             if not algo_orders:
                 self.logger.debug(f"没有找到现有的止盈止损订单 {symbol}")
@@ -591,20 +566,36 @@ class ExecutionEngine:
                             continue
                     
                     # 取消算法订单
-                    cancel_result = okx_client.cancel_algo_order(symbol, algo_id)
+                    cancel_result = await okx_client.async_cancel_algo_order(symbol, algo_id)
                     
-                    if cancel_result and isinstance(cancel_result, dict):
-                        if cancel_result.get('code') == '0':
-                            self.logger.info(
-                                f"✅ [取消旧止盈止损] {symbol}: 已取消算法订单 {algo_id} "
-                                f"(持仓方向={algo_pos_side})"
-                            )
-                            canceled_count += 1
+                    success = False
+                    error_msg = None
+                    if cancel_result:
+                        if isinstance(cancel_result, dict):
+                            data_list = cancel_result.get('data', [])
+                        elif isinstance(cancel_result, list):
+                            data_list = cancel_result
                         else:
-                            self.logger.warning(
-                                f"⚠️ [取消旧止盈止损] {symbol}: 取消算法订单失败 {algo_id} | "
-                                f"错误={cancel_result.get('msg', '未知错误')}"
-                            )
+                            data_list = []
+                        
+                        for item in data_list:
+                            if item.get('sCode') == '0':
+                                success = True
+                                break
+                            if not error_msg and item.get('sMsg'):
+                                error_msg = item.get('sMsg')
+                    
+                    if success:
+                        self.logger.info(
+                            f"✅ [取消旧止盈止损] {symbol}: 已取消算法订单 {algo_id} "
+                            f"(持仓方向={algo_pos_side})"
+                        )
+                        canceled_count += 1
+                    else:
+                        self.logger.warning(
+                            f"⚠️ [取消旧止盈止损] {symbol}: 取消算法订单失败 {algo_id} | "
+                            f"错误={error_msg or '未知错误'}"
+                        )
                 
                 except Exception as e:
                     self.logger.debug(f"取消算法订单失败 {symbol}: {e}")
@@ -633,11 +624,11 @@ class ExecutionEngine:
             'error': 检查失败
         """
         try:
-            from ..data.okx_client import OKXClient
-            okx_client = OKXClient()
+            from ..data.okx_client import get_okx_client
+            okx_client = await get_okx_client()
             
             # 1. 检查是否有持仓
-            positions_result = okx_client.get_positions(symbol)
+            positions_result = await okx_client.async_get_positions(symbol)
             current_position = None
             
             if positions_result:
@@ -663,7 +654,7 @@ class ExecutionEngine:
             pending_orders = []
             try:
                 # 获取待处理的订单
-                orders_result = okx_client.get_pending_orders(symbol)
+                orders_result = await okx_client.async_get_pending_orders(symbol)
                 if orders_result:
                     if isinstance(orders_result, dict):
                         if orders_result.get('code') == '0':
@@ -680,13 +671,34 @@ class ExecutionEngine:
                     try:
                         order_id = order.get('ordId', '')
                         if order_id:
-                            cancel_result = okx_client.cancel_order(symbol, order_id)
-                            if cancel_result and isinstance(cancel_result, dict):
-                                if cancel_result.get('code') == '0':
-                                    self.logger.info(
-                                        f"✅ [撤销委托] {symbol}: 已撤销订单 {order_id}"
-                                    )
-                                    canceled_count += 1
+                            cancel_result = await okx_client.async_cancel_order(symbol, order_id)
+                            success = False
+                            error_msg = None
+                            if cancel_result:
+                                if isinstance(cancel_result, dict):
+                                    data_list = cancel_result.get('data', [])
+                                elif isinstance(cancel_result, list):
+                                    data_list = cancel_result
+                                else:
+                                    data_list = []
+                                
+                                for item in data_list:
+                                    if item.get('sCode') == '0':
+                                        success = True
+                                        break
+                                    if not error_msg and item.get('sMsg'):
+                                        error_msg = item.get('sMsg')
+                            
+                            if success:
+                                self.logger.info(
+                                    f"✅ [撤销委托] {symbol}: 已撤销订单 {order_id}"
+                                )
+                                canceled_count += 1
+                            else:
+                                self.logger.warning(
+                                    f"⚠️ [撤销委托] {symbol}: 撤销订单失败 {order_id} | "
+                                    f"错误={error_msg or '未知错误'}"
+                                )
                     except Exception as e:
                         self.logger.debug(f"撤销订单失败 {symbol}: {e}")
                 
@@ -796,7 +808,6 @@ class ExecutionEngine:
             pos_side_for_close = position_side if position_side in ['long', 'short'] else None
             
             # 使用市价单平仓（快速平仓）
-            from decimal import Decimal
             size_str = str(Decimal(str(abs(pos_size))).normalize())
             
             # 创建平仓订单
@@ -912,7 +923,6 @@ class ExecutionEngine:
             # 设置止损订单（条件单）
             try:
                 # 格式化数量字符串
-                from decimal import Decimal
                 size_str = str(Decimal(str(order_size)).normalize())
                 
                 # 格式化价格字符串
@@ -1101,9 +1111,110 @@ class ExecutionEngine:
         """
         if not expected_price or not order.average_price:
             return 0.0
-        
-        slippage = abs(order.average_price - expected_price) / expected_price
-        return slippage
+        return (order.average_price - expected_price) / expected_price
+
+    def _parse_kline(self, raw_kline: Any) -> List[Dict[str, float]]:
+        """解析OKX返回的K线数据为按时间升序的字典列表"""
+        candles: List[Dict[str, float]] = []
+        if not raw_kline or not isinstance(raw_kline, list):
+            return candles
+        try:
+            sorted_raw = sorted(raw_kline, key=lambda item: int(item[0]))
+        except Exception:
+            sorted_raw = raw_kline
+        for item in sorted_raw:
+            try:
+                ts = int(item[0])
+                open_price = float(item[1])
+                high_price = float(item[2])
+                low_price = float(item[3])
+                close_price = float(item[4])
+                candles.append({
+                    'ts': ts,
+                    'open': open_price,
+                    'high': high_price,
+                    'low': low_price,
+                    'close': close_price
+                })
+            except (ValueError, TypeError, IndexError):
+                continue
+        return candles
+
+    def _calculate_atr_value(self, candles: List[Dict[str, float]], period: int) -> Optional[float]:
+        """根据K线数据计算简单ATR"""
+        if not candles or len(candles) < max(period + 1, 2):
+            return None
+        true_ranges: List[float] = []
+        for idx in range(1, len(candles)):
+            current = candles[idx]
+            previous = candles[idx - 1]
+            high_low = current['high'] - current['low']
+            high_close = abs(current['high'] - previous['close'])
+            low_close = abs(current['low'] - previous['close'])
+            true_ranges.append(max(high_low, high_close, low_close))
+        if not true_ranges:
+            return None
+        relevant = true_ranges[-period:]
+        if not relevant:
+            return None
+        return sum(relevant) / len(relevant)
+
+    def _calculate_trend_slope(self, closes: List[float], window: int) -> Optional[float]:
+        """通过两段均值差计算趋势斜率"""
+        if not closes or window <= 0 or len(closes) < window * 2:
+            return None
+        recent = closes[-window:]
+        previous = closes[-2 * window:-window]
+        recent_avg = sum(recent) / window
+        previous_avg = sum(previous) / window
+        return recent_avg - previous_avg
+
+    async def _fetch_market_context(self, symbol: str) -> Dict[str, Any]:
+        """获取用于风险控制的市场波动与趋势信息"""
+        context: Dict[str, Any] = {}
+        try:
+            from ..data.okx_client import get_okx_client
+            okx_client = await get_okx_client()
+        except Exception as e:
+            self.logger.warning(f"获取OKX客户端失败，无法加载市场数据 {symbol}: {e}")
+            return context
+        atr_period = int(self.risk_config.get('atr_period', 14))
+        volatility_interval = self.risk_config.get('volatility_interval', '15m')
+        trend_interval = self.risk_config.get('trend_interval', '30m')
+        trend_window = int(self.risk_config.get('trend_window', 10))
+        try:
+            limit_for_atr = max(atr_period * 3, atr_period + 2)
+            raw_volatility = await okx_client.async_get_kline(symbol, volatility_interval, limit_for_atr)
+            vol_candles = self._parse_kline(raw_volatility)
+            atr_value = self._calculate_atr_value(vol_candles, atr_period)
+            if atr_value is not None:
+                context['atr'] = atr_value
+                last_close = vol_candles[-1]['close'] if vol_candles else None
+                if last_close and last_close != 0:
+                    context['atr_pct'] = (atr_value / last_close) * 100
+            if vol_candles:
+                context['volatility_closes'] = [c['close'] for c in vol_candles]
+        except Exception as e:
+            self.logger.warning(f"获取波动率数据失败 {symbol}: {e}")
+        try:
+            limit_for_trend = max(trend_window * 4, trend_window * 2 + 2)
+            raw_trend = await okx_client.async_get_kline(symbol, trend_interval, limit_for_trend)
+            trend_candles = self._parse_kline(raw_trend)
+            closes = [c['close'] for c in trend_candles]
+            slope = self._calculate_trend_slope(closes, trend_window)
+            if slope is not None:
+                context['trend_slope'] = slope
+                if slope > 0:
+                    context['trend_direction'] = 'up'
+                elif slope < 0:
+                    context['trend_direction'] = 'down'
+                else:
+                    context['trend_direction'] = 'flat'
+            if trend_candles:
+                context['trend_closes'] = closes
+        except Exception as e:
+            self.logger.warning(f"获取趋势数据失败 {symbol}: {e}")
+        return context
     
     def _update_stats(self, order: Order, execution_time: float):
         """更新执行统计"""

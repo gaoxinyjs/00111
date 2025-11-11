@@ -372,7 +372,30 @@ class SignalGenerator:
                         if isinstance(latest_kline, dict):
                             market_data_with_symbol['price'] = latest_kline.get('close', 'N/A')
             
-            ai_result = self.deepseek_client.generate_signal(market_data_with_symbol)
+            try:
+                ai_result = self.deepseek_client.generate_signal(market_data_with_symbol)
+            except Exception as e:
+                # 捕获 DeepSeek API 错误（如 402 Payment Required）
+                error_str = str(e)
+                if '402' in error_str or 'Payment Required' in error_str or '需要付费' in error_str:
+                    # DeepSeek API 需要付费，使用降级策略（技术指标）
+                    self.logger.warning(f"[AI信号降级] {symbol}: DeepSeek API需要付费，使用技术指标降级策略")
+                    
+                    # 使用技术指标生成信号
+                    kline_data = market_data_with_symbol.get('kline', [])
+                    if kline_data:
+                        technical_signal = self.generate_technical_signal(symbol, kline_data)
+                        if technical_signal:
+                            self.logger.info(f"[AI信号降级] {symbol}: 使用技术指标生成信号: {technical_signal.type}, 强度: {technical_signal.strength}")
+                            return technical_signal
+                    
+                    # 如果技术指标也无法生成信号，返回 None
+                    self.logger.warning(f"[AI信号降级] {symbol}: 技术指标也无法生成信号，返回 None")
+                    return None
+                else:
+                    # 其他错误，重新抛出
+                    self.logger.error(f"[AI信号生成] {symbol}: DeepSeek API错误: {e}")
+                    raise
             
             # 保存完整的AI分析结果到信号中（用于自学习）
             ai_analysis = ai_result.get('analysis', {}) if ai_result else {}

@@ -954,8 +954,13 @@ JSON格式输出：
             # 4xx错误（客户端错误）通常不重试
             if hasattr(e, 'response') and e.response is not None:
                 status_code = e.response.status_code
-                if 400 <= status_code < 500:
-                    # 客户端错误，不重试
+                if status_code == 402:
+                    # 402 Payment Required - 账户需要付费，使用降级策略
+                    # 导入 PaymentRequiredException（延迟导入避免循环依赖）
+                    from ..core.exception import PaymentRequiredException
+                    raise PaymentRequiredException(f"DeepSeek API需要付费 (402): {e}")
+                elif 400 <= status_code < 500:
+                    # 其他客户端错误，不重试
                     raise APIException(f"DeepSeek API客户端错误 ({status_code}): {e}")
             
             # 5xx错误或其他错误可以重试

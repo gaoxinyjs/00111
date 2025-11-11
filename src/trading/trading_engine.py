@@ -20,7 +20,7 @@ from ..risk.risk_manager import RiskManager
 from ..risk.position_controller import PositionController
 from ..trading.position_manager import PositionManager
 from ..monitoring.profit_statistics import ProfitStatistics
-from ..data.okx_client import OKXClient
+from ..data.okx_client import get_okx_client
 from ..core.exception import TradingSystemException
 
 
@@ -43,7 +43,7 @@ class TradingEngine:
         self.position_controller = PositionController()
         self.position_manager = PositionManager()
         self.profit_statistics = ProfitStatistics()
-        self.okx_client = OKXClient()
+        self.okx_client = None  # 异步初始化
         
         # 多时间周期分析器
         from ..analysis.multi_timeframe_analyzer import MultiTimeframeAnalyzer
@@ -143,8 +143,11 @@ class TradingEngine:
     async def _initialize_account(self):
         """初始化账户"""
         try:
+            # 获取OKX客户端单例
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
             # 获取账户余额
-            balance_data = self.okx_client.get_balance()
+            balance_data = await self.okx_client.async_get_balance()
             
             if balance_data:
                 balance = float(balance_data[0].get('availBal', 0)) if balance_data else 0
@@ -252,20 +255,24 @@ class TradingEngine:
                 symbol = pair.get('symbol')
                 
                 try:
-                    # 获取行情
-                    ticker = self.data_collector.collect_ticker(symbol)
+                    # 获取行情（异步）
+                    ticker = await self.data_collector.collect_ticker(symbol)
                     
-                    # 获取多时间周期K线数据（15m, 1H, 4H）
-                    kline_15m = self.data_collector.collect_kline(symbol, '15m', 100)
-                    kline_1h = self.data_collector.collect_kline(symbol, '1H', 100)
-                    kline_4h = self.data_collector.collect_kline(symbol, '4H', 100)
+                    # 获取多时间周期K线数据（15m, 1H, 4H）（异步）
+                    kline_15m = await self.data_collector.collect_kline(symbol, '15m', 100)
+                    kline_1h = await self.data_collector.collect_kline(symbol, '1H', 100)
+                    kline_4h = await self.data_collector.collect_kline(symbol, '4H', 100)
                     
                     # 主要使用15分钟进行技术指标计算
                     kline = kline_15m
                     
                     # 计算技术指标
-                    if kline:
-                        df = self.data_processor.calculate_indicators(kline)
+                    if kline and isinstance(kline, list) and len(kline) > 0:
+                        try:
+                            df = self.data_processor.calculate_indicators(kline)
+                        except Exception as e:
+                            self.logger.error(f"计算{symbol}技术指标失败: {e}", exc_info=True)
+                            continue
                         
                         # 获取计算出的指标
                         indicators_dict = df.iloc[-1].to_dict() if not df.empty else {}
@@ -295,9 +302,7 @@ class TradingEngine:
                         # 收集订单簿数据（用于做市商意图分析）
                         orderbook_data = {}
                         try:
-                            orderbook = await asyncio.to_thread(
-                                self.data_collector.collect_orderbook, symbol, 20
-                            )
+                            orderbook = await self.data_collector.collect_orderbook(symbol, 20)
                             if orderbook:
                                 bids = orderbook.get('bids', [])
                                 asks = orderbook.get('asks', [])
@@ -703,7 +708,9 @@ class TradingEngine:
         try:
             # ⚠️ 首先从API实时获取最新持仓数据（确保数据准确）
             try:
-                positions_result = self.okx_client.get_positions()
+                if self.okx_client is None:
+                    self.okx_client = await get_okx_client()
+                positions_result = await self.okx_client.async_get_positions()
                 
                 # 处理不同的返回格式
                 if isinstance(positions_result, dict):
@@ -749,9 +756,9 @@ class TradingEngine:
                     # 获取该交易对的市场数据
                     symbol_market_data = market_data.get(symbol, {})
                     if not symbol_market_data:
-                        # 如果没有市场数据，尝试从ticker获取价格
+                        # 如果没有市场数据，尝试从ticker获取价格（异步）
                         try:
-                            ticker = self.data_collector.collect_ticker(symbol)
+                            ticker = await self.data_collector.collect_ticker(symbol)
                             if ticker:
                                 symbol_market_data = {
                                     'symbol': symbol,
@@ -1147,8 +1154,11 @@ class TradingEngine:
     async def _update_positions(self):
         """更新持仓"""
         try:
-            # 从交易所获取最新持仓
-            positions_result = self.okx_client.get_positions()
+            # 获取OKX客户端单例
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
+            # 从交易所获取最新持仓（异步）
+            positions_result = await self.okx_client.async_get_positions()
             
             # 处理不同的返回格式
             if isinstance(positions_result, dict):
@@ -1296,9 +1306,9 @@ class TradingEngine:
                     # 获取市场数据
                     symbol_market_data = market_data.get(symbol, {})
                     if not symbol_market_data:
-                        # 如果没有市场数据，尝试获取
+                        # 如果没有市场数据，尝试获取（异步）
                         try:
-                            ticker = self.data_collector.collect_ticker(symbol)
+                            ticker = await self.data_collector.collect_ticker(symbol)
                             if ticker:
                                 symbol_market_data = {
                                     'symbol': symbol,
@@ -1510,9 +1520,9 @@ class TradingEngine:
                         symbol_market_data = latest_market_data.get(symbol, {})
                         
                         if not symbol_market_data:
-                            # 如果没有市场数据，尝试获取
+                            # 如果没有市场数据，尝试获取（异步）
                             try:
-                                ticker = self.data_collector.collect_ticker(symbol)
+                                ticker = await self.data_collector.collect_ticker(symbol)
                                 if ticker:
                                     symbol_market_data = {
                                         'symbol': symbol,

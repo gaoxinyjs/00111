@@ -48,6 +48,8 @@ class Order:
     # 止盈止损价格（在创建订单时设置）
     stop_loss_price: Optional[float] = None  # 止损触发价格
     take_profit_price: Optional[float] = None  # 止盈触发价格
+    attach_sl_tp_on_submit: bool = True  # 是否在提交时携带止盈止损
+    decision_price: Optional[float] = None  # 决策时参考的价格
     
     def __post_init__(self):
         if self.created_at is None:
@@ -159,16 +161,18 @@ class OrderManager:
             stop_loss_price = getattr(order, 'stop_loss_price', None)
             take_profit_price = getattr(order, 'take_profit_price', None)
             
+            stop_loss_value = str(stop_loss_price) if (order.attach_sl_tp_on_submit and stop_loss_price) else None
+            take_profit_value = str(take_profit_price) if (order.attach_sl_tp_on_submit and take_profit_price) else None
             result = self.okx_client.place_order(
                 symbol=order.symbol,
                 side=order.side,
                 order_type=order.order_type,
                 size=str(order.size),
                 price=str(order.price) if order.price else None,
-                pos_side=order.position_side,  # 合约交易：持仓方向（long或short）
-                reduce_only=order.is_closing,  # 合约交易：是否平仓
-                stop_loss_price=str(stop_loss_price) if stop_loss_price else None,  # 止损触发价格
-                take_profit_price=str(take_profit_price) if take_profit_price else None  # 止盈触发价格
+                pos_side=order.position_side,
+                reduce_only=order.is_closing,
+                stop_loss_price=stop_loss_value,
+                take_profit_price=take_profit_value
             )
             
             # 更新订单状态

@@ -1,0 +1,57 @@
+{
+  "record_id": "SOL-USDT-SWAP_20251111_131026_065752",
+  "timestamp": "2025-11-11T13:10:26.065783",
+  "symbol": "SOL-USDT-SWAP",
+  "decision": {
+    "action": "long",
+    "position_size": 0.05,
+    "entry_price": 166.6,
+    "confidence": 0.7
+  },
+  "ai_analysis": {
+    "recommendation": "unknown",
+    "confidence": 0,
+    "trend": "unknown",
+    "technical_signal": "unknown",
+    "reasoning": "",
+    "key_factors": [],
+    "volume_price_analysis": "",
+    "market_maker_intent": ""
+  },
+  "market_conditions": {
+    "price": 166.84,
+    "change_24h": -0.9204822139081793,
+    "indicators": {
+      "symbol": "SOL-USDT-SWAP",
+      "timestamp": "2025-11-11T05:00:00",
+      "open": 167.15,
+      "high": 168.0,
+      "low": 166.34,
+      "close": 166.84,
+      "volume": 604927.3,
+      "interval": "15m",
+      "ma_5": 168.384,
+      "ma_20": 168.99550000000002,
+      "ma_60": 168.15983333333332,
+      "macd": 0.08467410791371321,
+      "macd_signal": 0.4204256980037416,
+      "macd_hist": -0.33575159009002836,
+      "rsi": 45.701689933872196,
+      "bb_middle": 168.99550000000002,
+      "bb_upper": 171.6069039377919,
+      "bb_lower": 166.38409606220813,
+      "bb_width": 0.030905011527429915,
+      "volume_ma_5": 666229.898,
+      "volume_ma_20": 423485.4335,
+      "volume_price_ratio": 3579.5467926660767,
+      "momentum": -0.02089201877934277,
+      "price_change": -0.001197318007662762,
+      "volatility": 0.00772625288185751,
+      "price_change_5k": -1.7142857142857122,
+      "price_change_10k": -1.9683882719313675
+    },
+    "multi_timeframe": {}
+  },
+  "status": "open",
+  "result": null
+}

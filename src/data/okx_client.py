@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-OKX API客户端
+OKX API客户端（异步版本）
 封装OKX API调用，处理API限流，错误重试机制
+使用aiohttp实现异步HTTP请求，支持连接池复用和单例模式
 """
 
 import time
@@ -10,8 +11,11 @@ import hmac
 import base64
 import hashlib
 import asyncio
+import json
+import threading
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from urllib.parse import urlencode
 import aiohttp
 import requests
 from ..core.config_manager import get_config_manager
@@ -20,11 +24,32 @@ from ..core.security import get_security_manager
 from ..core.exception import APIException
 
 
+# 模块级单例实例
+_instance: Optional['OKXClient'] = None
+_init_lock = asyncio.Lock()
+
+
+async def get_okx_client() -> 'OKXClient':
+    """
+    获取OKX客户端单例（异步工厂函数）
+    
+    Returns:
+        OKXClient实例
+    """
+    global _instance
+    if _instance is None:
+        async with _init_lock:
+            if _instance is None:
+                _instance = OKXClient()
+                await _instance._async_init()
+    return _instance
+
+
 class OKXClient:
-    """OKX API客户端"""
+    """OKX API客户端（异步版本，支持连接池复用）"""
     
     def __init__(self):
-        """初始化OKX客户端"""
+        """初始化OKX客户端（同步部分）"""
         self.config_mgr = get_config_manager()
         self.logger = get_logger("okx_client")
         self.security = get_security_manager()
@@ -42,6 +67,8 @@ class OKXClient:
         rate_limit = okx_config.get('rate_limit', {})
         self.rest_requests_per_second = rate_limit.get('rest_requests_per_second', 10)
         self.last_request_time = 0
+        self._rate_limit_lock = asyncio.Lock()
+        self._rate_limit_sync_lock = threading.Lock()
         
         # 重试配置
         retry_config = okx_config.get('retry', {})
@@ -49,8 +76,61 @@ class OKXClient:
         self.retry_delay = retry_config.get('retry_delay', 1)
         self.backoff_factor = retry_config.get('backoff_factor', 2)
         
+        # aiohttp会话和连接池（异步初始化）
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._connector: Optional[aiohttp.TCPConnector] = None
+        
         if not all([self.api_key, self.secret_key, self.passphrase]):
             self.logger.warning("OKX API密钥未配置，请检查配置")
+
+    def _infer_inst_type(self, symbol: Optional[str]) -> str:
+        """根据交易对推断产品类型"""
+        if not symbol:
+            return "SWAP"
+        upper_symbol = symbol.upper()
+        if upper_symbol.endswith("-SWAP"):
+            return "SWAP"
+        if upper_symbol.endswith("-FUTURES") or upper_symbol.endswith("-FUT"):
+            return "FUTURES"
+        if upper_symbol.endswith("-SPOT"):
+            return "SPOT"
+        if upper_symbol.endswith("-MARGIN"):
+            return "MARGIN"
+        if upper_symbol.endswith("-OPTION") or upper_symbol.endswith("-OPT"):
+            return "OPTION"
+        # 根据常见后缀推断失败时，默认使用SWAP（合约交易最常见）
+        return "SWAP"
+
+    async def _async_init(self):
+        """异步初始化（创建连接池和会话）"""
+        # 创建连接池（复用连接）
+        self._connector = aiohttp.TCPConnector(
+            limit=100,  # 连接池大小
+            limit_per_host=30,  # 每个主机的连接数
+            ttl_dns_cache=300,  # DNS缓存TTL
+            force_close=False,  # 不强制关闭连接，复用连接
+            enable_cleanup_closed=True  # 清理已关闭的连接
+        )
+        
+        # 创建aiohttp会话（复用连接池）
+        timeout = aiohttp.ClientTimeout(total=30, connect=10)
+        self._session = aiohttp.ClientSession(
+            connector=self._connector,
+            timeout=timeout,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        self.logger.info("OKX客户端异步初始化完成（连接池已创建）")
+    
+    async def close(self):
+        """关闭连接池和会话"""
+        if self._session:
+            await self._session.close()
+            self._session = None
+        if self._connector:
+            await self._connector.close()
+            self._connector = None
+        self.logger.info("OKX客户端连接池已关闭")
     
     def _generate_signature(self, timestamp: str, method: str, request_path: str, body: str = "") -> str:
         """
@@ -114,86 +194,146 @@ class OKXClient:
         
         return headers
     
-    def _rate_limit(self):
-        """API限流"""
-        current_time = time.time()
-        min_interval = 1.0 / self.rest_requests_per_second
-        
-        if current_time - self.last_request_time < min_interval:
-            sleep_time = min_interval - (current_time - self.last_request_time)
-            time.sleep(sleep_time)
-        
-        self.last_request_time = time.time()
+    async def _rate_limit(self):
+        """API限流（异步版本）"""
+        async with self._rate_limit_lock:
+            current_time = time.time()
+            min_interval = 1.0 / self.rest_requests_per_second
+            
+            if current_time - self.last_request_time < min_interval:
+                sleep_time = min_interval - (current_time - self.last_request_time)
+                await asyncio.sleep(sleep_time)
+            
+            self.last_request_time = time.time()
     
-    def _request(self, method: str, endpoint: str, params: Optional[Dict] = None, 
-                 data: Optional[Dict] = None, retry: int = 0) -> Dict[str, Any]:
+    def _rate_limit_sync(self):
+        """API限流（同步版本）"""
+        with self._rate_limit_sync_lock:
+            current_time = time.time()
+            min_interval = 1.0 / self.rest_requests_per_second
+            if current_time - self.last_request_time < min_interval:
+                sleep_time = min_interval - (current_time - self.last_request_time)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+            self.last_request_time = time.time()
+    
+    async def _request(self, method: str, endpoint: str, params: Optional[Dict] = None, 
+                      data: Optional[Dict] = None, retry: int = 0) -> Dict[str, Any]:
         """
-        发送API请求
+        发送API请求（异步版本，使用aiohttp）
         
         Args:
             method: HTTP方法
             endpoint: API端点
             params: URL参数
             data: 请求体数据
+            retry: 重试次数
             
         Returns:
             API响应数据
         """
-        self._rate_limit()
+        # 确保会话已初始化
+        if self._session is None:
+            await self._async_init()
+        
+        await self._rate_limit()
         
         url = f"{self.base_url}{endpoint}"
+        request_params = params
         body = ""
         if data:
-            import json
             body = json.dumps(data)
         
         # 对于GET请求，需要将查询参数添加到请求路径中用于签名
         request_path = endpoint
         if method.upper() == 'GET' and params:
             # 构建查询字符串并排序（OKX要求）
-            from urllib.parse import urlencode
             sorted_params = sorted(params.items())
             query_string = urlencode(sorted_params)
             request_path = f"{endpoint}?{query_string}"
+            url = f"{self.base_url}{request_path}"
+            request_params = None
+        elif method.upper() == 'GET':
+            request_params = None
         
         headers = self._get_headers(method, request_path, body)
         
         try:
-            if method.upper() == 'GET':
-                response = requests.get(url, headers=headers, params=params, timeout=10)
-            elif method.upper() == 'POST':
-                response = requests.post(url, headers=headers, json=data, params=params, timeout=10)
-            elif method.upper() == 'DELETE':
-                response = requests.delete(url, headers=headers, json=data, params=params, timeout=10)
-            else:
-                raise APIException(f"不支持的HTTP方法: {method}")
-            
-            # 处理401未授权错误
-            if response.status_code == 401:
-                error_detail = ""
-                try:
-                    result = response.json()
-                    error_detail = result.get('msg', response.text)
-                except:
-                    error_detail = response.text
+            # 使用aiohttp发送异步请求
+            async with self._session.request(
+                method=method.upper(),
+                url=url,
+                headers=headers,
+                params=request_params if method.upper() != 'GET' else None,
+                json=data if method.upper() in ['POST', 'DELETE'] and data else None,
+                data=body if method.upper() in ['POST', 'DELETE'] and not data else None
+            ) as response:
+                # 处理401未授权错误
+                if response.status == 401:
+                    error_detail = ""
+                    try:
+                        result = await response.json()
+                        error_detail = result.get('msg', await response.text())
+                    except:
+                        error_detail = await response.text()
+                    
+                    self.logger.error(f"OKX API认证失败 (401): {error_detail}")
+                    self.logger.error("请检查以下配置：")
+                    self.logger.error(f"  - API Key: {'已配置' if self.api_key else '未配置'}")
+                    self.logger.error(f"  - Secret Key: {'已配置' if self.secret_key else '未配置'}")
+                    self.logger.error(f"  - Passphrase: {'已配置' if self.passphrase else '未配置'}")
+                    raise APIException(f"OKX API认证失败: {error_detail}. 请检查API密钥配置")
                 
-                self.logger.error(f"OKX API认证失败 (401): {error_detail}")
-                self.logger.error("请检查以下配置：")
-                self.logger.error(f"  - API Key: {'已配置' if self.api_key else '未配置'}")
-                self.logger.error(f"  - Secret Key: {'已配置' if self.secret_key else '未配置'}")
-                self.logger.error(f"  - Passphrase: {'已配置' if self.passphrase else '未配置'}")
-                raise APIException(f"OKX API认证失败: {error_detail}. 请检查API密钥配置")
-            
-            # 先检查HTTP状态码，如果是400错误，尝试获取详细错误信息
-            if response.status_code == 400:
-                try:
-                    result = response.json()
+                # 先检查HTTP状态码，如果是400错误，尝试获取详细错误信息
+                if response.status == 400:
+                    try:
+                        result = await response.json()
+                        error_msg = result.get('msg', '未知错误')
+                        error_code = result.get('code', '未知')
+                        error_data = result.get('data', [])
+                        
+                        # 记录详细错误信息
+                        self.logger.error(f"OKX API 400错误 [{error_code}]: {error_msg}")
+                        if error_data:
+                            self.logger.error(f"错误详情: {error_data}")
+                            # 如果是数组，提取第一个错误
+                            if isinstance(error_data, list) and len(error_data) > 0:
+                                first_error = error_data[0]
+                                if isinstance(first_error, dict):
+                                    s_code = first_error.get('sCode', '')
+                                    s_msg = first_error.get('sMsg', '')
+                                    if s_code or s_msg:
+                                        self.logger.error(f"具体错误: sCode={s_code}, sMsg={s_msg}")
+                        
+                        # 记录请求参数以便调试
+                        if params:
+                            self.logger.debug(f"请求参数: {params}")
+                        if data:
+                            self.logger.debug(f"请求体: {data}")
+                        
+                        raise APIException(f"OKX API 400错误 [{error_code}]: {error_msg}")
+                    except (ValueError, aiohttp.ContentTypeError):
+                        # 如果不是JSON格式，记录原始响应
+                        error_text = await response.text()
+                        self.logger.error(f"OKX API 400错误，响应不是JSON格式: {error_text}")
+                        raise APIException(f"OKX API 400错误: {error_text}")
+                
+                # 检查HTTP状态码
+                if response.status >= 400:
+                    error_text = await response.text()
+                    self.logger.error(f"OKX API HTTP错误 [{response.status}]: {error_text}")
+                    raise APIException(f"OKX API HTTP错误 [{response.status}]: {error_text}")
+                
+                # 解析JSON响应
+                result = await response.json()
+                
+                if result.get('code') != '0':
                     error_msg = result.get('msg', '未知错误')
                     error_code = result.get('code', '未知')
                     error_data = result.get('data', [])
                     
                     # 记录详细错误信息
-                    self.logger.error(f"OKX API 400错误 [{error_code}]: {error_msg}")
+                    self.logger.error(f"OKX API错误 [{error_code}]: {error_msg}")
                     if error_data:
                         self.logger.error(f"错误详情: {error_data}")
                         # 如果是数组，提取第一个错误
@@ -205,58 +345,154 @@ class OKXClient:
                                 if s_code or s_msg:
                                     self.logger.error(f"具体错误: sCode={s_code}, sMsg={s_msg}")
                     
-                    # 记录请求参数以便调试
-                    if params:
-                        self.logger.debug(f"请求参数: {params}")
-                    if data:
-                        self.logger.debug(f"请求体: {data}")
-                    
-                    raise APIException(f"OKX API 400错误 [{error_code}]: {error_msg}")
-                except ValueError:
-                    # 如果不是JSON格式，记录原始响应
-                    self.logger.error(f"OKX API 400错误，响应不是JSON格式: {response.text}")
-                    raise APIException(f"OKX API 400错误: {response.text}")
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            if result.get('code') != '0':
-                error_msg = result.get('msg', '未知错误')
-                error_code = result.get('code', '未知')
-                error_data = result.get('data', [])
+                    raise APIException(f"OKX API错误 [{error_code}]: {error_msg}")
                 
-                # 记录详细错误信息
-                self.logger.error(f"OKX API错误 [{error_code}]: {error_msg}")
-                if error_data:
-                    self.logger.error(f"错误详情: {error_data}")
-                    # 如果是数组，提取第一个错误
-                    if isinstance(error_data, list) and len(error_data) > 0:
-                        first_error = error_data[0]
-                        if isinstance(first_error, dict):
-                            s_code = first_error.get('sCode', '')
-                            s_msg = first_error.get('sMsg', '')
-                            if s_code or s_msg:
-                                self.logger.error(f"具体错误: sCode={s_code}, sMsg={s_msg}")
-                
-                raise APIException(f"OKX API错误 [{error_code}]: {error_msg}")
-            
-            return result.get('data', {})
+                return result.get('data', {})
         
-        except requests.exceptions.RequestException as e:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             self.logger.error(f"OKX API请求失败: {e}")
             
             # 重试逻辑
             if retry < self.max_retries:
                 delay = self.retry_delay * (self.backoff_factor ** retry)
                 self.logger.info(f"重试请求 (第{retry + 1}次)，延迟{delay}秒...")
-                time.sleep(delay)
-                return self._request(method, endpoint, params, data, retry + 1)
+                await asyncio.sleep(delay)
+                return await self._request(method, endpoint, params, data, retry + 1)
             
             raise APIException(f"OKX API请求失败，已重试{self.max_retries}次: {e}")
     
-    def get_ticker(self, symbol: str) -> Dict[str, Any]:
+    def _request_sync(self, method: str, endpoint: str, params: Optional[Dict] = None,
+                      data: Optional[Dict] = None, retry: int = 0) -> Dict[str, Any]:
+        """发送API请求（同步版本，使用requests）"""
+        self._rate_limit_sync()
+        
+        url = f"{self.base_url}{endpoint}"
+        request_params = params
+        body = ""
+        if data:
+            body = json.dumps(data)
+        
+        request_path = endpoint
+        if method.upper() == 'GET' and params:
+            sorted_params = sorted(params.items())
+            query_string = urlencode(sorted_params)
+            request_path = f"{endpoint}?{query_string}"
+            url = f"{self.base_url}{request_path}"
+            request_params = None
+        elif method.upper() == 'GET':
+            request_params = None
+        
+        headers = self._get_headers(method, request_path, body)
+        
+        try:
+            response = requests.request(
+                method=method.upper(),
+                url=url,
+                headers=headers,
+                params=request_params if method.upper() != 'GET' else None,
+                json=data if method.upper() in ['POST', 'DELETE'] and data else None,
+                data=body if method.upper() in ['POST', 'DELETE'] and not data else None,
+                timeout=30,
+            )
+            
+            if response.status_code == 401:
+                try:
+                    result = response.json()
+                    error_detail = result.get('msg', response.text)
+                except ValueError:
+                    error_detail = response.text
+                self.logger.error(f"OKX API认证失败 (401): {error_detail}")
+                self.logger.error("请检查以下配置：")
+                self.logger.error(f"  - API Key: {'已配置' if self.api_key else '未配置'}")
+                self.logger.error(f"  - Secret Key: {'已配置' if self.secret_key else '未配置'}")
+                self.logger.error(f"  - Passphrase: {'已配置' if self.passphrase else '未配置'}")
+                raise APIException(f"OKX API认证失败: {error_detail}. 请检查API密钥配置")
+            
+            if response.status_code == 400:
+                try:
+                    result = response.json()
+                    error_msg = result.get('msg', '未知错误')
+                    error_code = result.get('code', '未知')
+                    error_data = result.get('data', [])
+                    self.logger.error(f"OKX API 400错误 [{error_code}]: {error_msg}")
+                    if error_data:
+                        self.logger.error(f"错误详情: {error_data}")
+                        if isinstance(error_data, list) and error_data:
+                            first_error = error_data[0]
+                            if isinstance(first_error, dict):
+                                s_code = first_error.get('sCode', '')
+                                s_msg = first_error.get('sMsg', '')
+                                if s_code or s_msg:
+                                    self.logger.error(f"具体错误: sCode={s_code}, sMsg={s_msg}")
+                    if params:
+                        self.logger.debug(f"请求参数: {params}")
+                    if data:
+                        self.logger.debug(f"请求体: {data}")
+                    raise APIException(f"OKX API 400错误 [{error_code}]: {error_msg}")
+                except ValueError:
+                    error_text = response.text
+                    self.logger.error(f"OKX API 400错误，响应不是JSON格式: {error_text}")
+                    raise APIException(f"OKX API 400错误: {error_text}")
+            
+            if response.status_code >= 400:
+                error_text = response.text
+                self.logger.error(f"OKX API HTTP错误 [{response.status_code}]: {error_text}")
+                raise APIException(f"OKX API HTTP错误 [{response.status_code}]: {error_text}")
+            
+            try:
+                result = response.json()
+            except ValueError as e:
+                self.logger.error(f"解析OKX API响应失败: {e}")
+                raise APIException(f"解析OKX API响应失败: {e}")
+            
+            if result.get('code') != '0':
+                error_msg = result.get('msg', '未知错误')
+                error_code = result.get('code', '未知')
+                error_data = result.get('data', [])
+                self.logger.error(f"OKX API错误 [{error_code}]: {error_msg}")
+                if error_data:
+                    self.logger.error(f"错误详情: {error_data}")
+                    if isinstance(error_data, list) and error_data:
+                        first_error = error_data[0]
+                        if isinstance(first_error, dict):
+                            s_code = first_error.get('sCode', '')
+                            s_msg = first_error.get('sMsg', '')
+                            if s_code or s_msg:
+                                self.logger.error(f"具体错误: sCode={s_code}, sMsg={s_msg}")
+                raise APIException(f"OKX API错误 [{error_code}]: {error_msg}")
+            
+            return result.get('data', {})
+        
+        except requests.RequestException as e:
+            self.logger.error(f"OKX API请求失败: {e}")
+            if retry < self.max_retries:
+                delay = self.retry_delay * (self.backoff_factor ** retry)
+                self.logger.info(f"重试请求 (第{retry + 1}次)，延迟{delay}秒...")
+                time.sleep(delay)
+                return self._request_sync(method, endpoint, params, data, retry + 1)
+            raise APIException(f"OKX API请求失败，已重试{self.max_retries}次: {e}")
+
+    def _parse_algo_orders(self, result: Any, state: Optional[str] = None) -> List[Dict[str, Any]]:
+        """解析算法订单响应"""
+        orders: List[Dict[str, Any]] = []
+        if isinstance(result, list):
+            orders = result
+        elif isinstance(result, dict):
+            if 'data' in result:
+                data_field = result.get('data', [])
+                if isinstance(data_field, list):
+                    orders = data_field
+                elif isinstance(data_field, dict):
+                    orders = [data_field]
+            else:
+                orders = [result]
+        if state == 'live':
+            orders = [order for order in orders if isinstance(order, dict) and order.get('state') == 'live']
+        return orders
+    
+    async def async_get_ticker(self, symbol: str) -> Dict[str, Any]:
         """
-        获取行情
+        获取行情（异步版本）
         
         Args:
             symbol: 交易对符号，如 'BTC-USDT'
@@ -266,11 +502,38 @@ class OKXClient:
         """
         endpoint = f"/api/v5/market/ticker"
         params = {'instId': symbol}
-        return self._request('GET', endpoint, params=params)
+        return await self._request('GET', endpoint, params=params)
     
-    def get_orderbook(self, symbol: str, depth: int = 20) -> Dict[str, Any]:
+    def get_ticker(self, symbol: str) -> Dict[str, Any]:
         """
-        获取订单簿
+        获取行情（同步版本，过渡用）
+        
+        注意：如果在异步环境中调用，请使用 async_get_ticker() 方法
+        
+        Args:
+            symbol: 交易对符号，如 'BTC-USDT'
+            
+        Returns:
+            行情数据
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 如果已经在事件循环中，提示使用异步方法
+                raise RuntimeError(
+                    "在异步环境中不能使用同步方法 get_ticker()，请使用 async_get_ticker() 方法"
+                )
+            else:
+                return loop.run_until_complete(self.async_get_ticker(symbol))
+        except RuntimeError as e:
+            if "不能使用同步方法" in str(e):
+                raise
+            # 如果没有事件循环，创建新的
+            return asyncio.run(self.async_get_ticker(symbol))
+    
+    async def async_get_orderbook(self, symbol: str, depth: int = 20) -> Dict[str, Any]:
+        """
+        获取订单簿（异步版本）
         
         Args:
             symbol: 交易对符号
@@ -281,11 +544,37 @@ class OKXClient:
         """
         endpoint = f"/api/v5/market/books"
         params = {'instId': symbol, 'sz': depth}
-        return self._request('GET', endpoint, params=params)
+        return await self._request('GET', endpoint, params=params)
     
-    def get_kline(self, symbol: str, interval: str = '1H', limit: int = 100) -> List[Dict[str, Any]]:
+    def get_orderbook(self, symbol: str, depth: int = 20) -> Dict[str, Any]:
         """
-        获取K线数据
+        获取订单簿（同步版本，过渡用）
+        
+        注意：如果在异步环境中调用，请使用 async_get_orderbook() 方法
+        
+        Args:
+            symbol: 交易对符号
+            depth: 深度（5, 10, 20, 50, 100, 200, 500）
+            
+        Returns:
+            订单簿数据
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                raise RuntimeError(
+                    "在异步环境中不能使用同步方法 get_orderbook()，请使用 async_get_orderbook() 方法"
+                )
+            else:
+                return loop.run_until_complete(self.async_get_orderbook(symbol, depth))
+        except RuntimeError as e:
+            if "不能使用同步方法" in str(e):
+                raise
+            return asyncio.run(self.async_get_orderbook(symbol, depth))
+    
+    async def async_get_kline(self, symbol: str, interval: str = '1H', limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        获取K线数据（异步版本）
         
         Args:
             symbol: 交易对符号
@@ -301,11 +590,38 @@ class OKXClient:
             'bar': interval,
             'limit': limit
         }
-        return self._request('GET', endpoint, params=params)
+        return await self._request('GET', endpoint, params=params)
     
-    def get_balance(self, currency: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_kline(self, symbol: str, interval: str = '1H', limit: int = 100) -> List[Dict[str, Any]]:
         """
-        获取账户余额
+        获取K线数据（同步版本，过渡用）
+        
+        注意：如果在异步环境中调用，请使用 async_get_kline() 方法
+        
+        Args:
+            symbol: 交易对符号
+            interval: 时间间隔（1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 6H, 12H, 1D, 1W, 1M）
+            limit: 返回数量（1-100）
+            
+        Returns:
+            K线数据列表
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                raise RuntimeError(
+                    "在异步环境中不能使用同步方法 get_kline()，请使用 async_get_kline() 方法"
+                )
+            else:
+                return loop.run_until_complete(self.async_get_kline(symbol, interval, limit))
+        except RuntimeError as e:
+            if "不能使用同步方法" in str(e):
+                raise
+            return asyncio.run(self.async_get_kline(symbol, interval, limit))
+    
+    async def async_get_balance(self, currency: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        获取账户余额（异步版本）
         
         Args:
             currency: 币种，如果为None则返回所有币种
@@ -318,7 +634,32 @@ class OKXClient:
         if currency:
             params['ccy'] = currency
         
-        return self._request('GET', endpoint, params=params)
+        return await self._request('GET', endpoint, params=params)
+    
+    def get_balance(self, currency: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        获取账户余额（同步版本，过渡用）
+        
+        注意：如果在异步环境中调用，请使用 async_get_balance() 方法
+        
+        Args:
+            currency: 币种，如果为None则返回所有币种
+            
+        Returns:
+            余额列表
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                raise RuntimeError(
+                    "在异步环境中不能使用同步方法 get_balance()，请使用 async_get_balance() 方法"
+                )
+            else:
+                return loop.run_until_complete(self.async_get_balance(currency))
+        except RuntimeError as e:
+            if "不能使用同步方法" in str(e):
+                raise
+            return asyncio.run(self.async_get_balance(currency))
     
     def get_instruments(self, inst_type: str = "SWAP", symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -336,11 +677,11 @@ class OKXClient:
         if symbol:
             params['instId'] = symbol  # instId是交易对符号
         
-        return self._request('GET', endpoint, params=params)
+        return self._request_sync('GET', endpoint, params=params)
     
-    def get_positions(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def async_get_positions(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        获取持仓
+        获取持仓（异步版本）
         
         Args:
             symbol: 交易对符号，如果为None则返回所有持仓
@@ -353,7 +694,32 @@ class OKXClient:
         if symbol:
             params['instId'] = symbol
         
-        return self._request('GET', endpoint, params=params)
+        return await self._request('GET', endpoint, params=params)
+    
+    def get_positions(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        获取持仓（同步版本，过渡用）
+        
+        注意：如果在异步环境中调用，请使用 async_get_positions() 方法
+        
+        Args:
+            symbol: 交易对符号，如果为None则返回所有持仓
+            
+        Returns:
+            持仓列表
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                raise RuntimeError(
+                    "在异步环境中不能使用同步方法 get_positions()，请使用 async_get_positions() 方法"
+                )
+            else:
+                return loop.run_until_complete(self.async_get_positions(symbol))
+        except RuntimeError as e:
+            if "不能使用同步方法" in str(e):
+                raise
+            return asyncio.run(self.async_get_positions(symbol))
     
     def set_leverage(self, symbol: str, leverage: int, margin_mode: str = 'cross') -> Dict[str, Any]:
         """
@@ -384,7 +750,7 @@ class OKXClient:
         }
         
         self.logger.info(f"设置杠杆: {symbol}, 杠杆倍数={leverage}x, 保证金模式={margin_mode}")
-        return self._request('POST', endpoint, data=data)
+        return self._request_sync('POST', endpoint, data=data)
     
     def place_order(self, symbol: str, side: str, order_type: str, 
                    size: str, price: Optional[str] = None,
@@ -522,7 +888,7 @@ class OKXClient:
         # 记录订单参数（用于调试）
         self.logger.debug(f"[下单] 交易对: {symbol}, 订单参数: {order_data}")
         
-        return self._request('POST', endpoint, data=order_data)
+        return self._request_sync('POST', endpoint, data=order_data)
     
     def place_stop_loss_order(self, symbol: str, side: str, size: str, 
                               trigger_price: str, order_price: Optional[str] = None,
@@ -613,7 +979,7 @@ class OKXClient:
             f"限价={order_price_str}"
         )
         
-        return self._request('POST', endpoint, data=order_data)
+        return self._request_sync('POST', endpoint, data=order_data)
     
     def place_take_profit_order(self, symbol: str, side: str, size: str,
                                 trigger_price: str, order_price: Optional[str] = None,
@@ -704,11 +1070,11 @@ class OKXClient:
             f"限价={order_price_str}"
         )
         
-        return self._request('POST', endpoint, data=order_data)
+        return self._request_sync('POST', endpoint, data=order_data)
     
-    def cancel_order(self, symbol: str, order_id: str) -> Dict[str, Any]:
+    async def async_cancel_order(self, symbol: str, order_id: str) -> Dict[str, Any]:
         """
-        撤单
+        撤单（异步）
         
         Args:
             symbol: 交易对符号
@@ -722,176 +1088,175 @@ class OKXClient:
             'instId': symbol,
             'ordId': order_id
         }
-        return self._request('POST', endpoint, data=data)
+        return await self._request('POST', endpoint, data=data)
     
-    def cancel_algo_order(self, symbol: str, algo_id: str) -> Dict[str, Any]:
+    def cancel_order(self, symbol: str, order_id: str) -> Dict[str, Any]:
+        """撤单（同步）"""
+        endpoint = "/api/v5/trade/cancel-order"
+        data = {
+            'instId': symbol,
+            'ordId': order_id
+        }
+        return self._request_sync('POST', endpoint, data=data)
+    
+    async def async_cancel_algo_order(self, symbol: str, algo_id: str) -> Dict[str, Any]:
         """
-        撤销算法订单（止盈止损订单）
-        
-        Args:
-            symbol: 交易对符号
-            algo_id: 算法订单ID
-            
-        Returns:
-            撤单结果
+        撤销算法订单（止盈止损订单）（异步）
         """
         endpoint = "/api/v5/trade/cancel-algo-order"
         data = {
             'instId': symbol,
             'algoId': algo_id
         }
-        return self._request('POST', endpoint, data=data)
+        return await self._request('POST', endpoint, data=data)
     
-    def get_algo_orders(self, symbol: Optional[str] = None, 
-                       order_type: Optional[str] = None,
-                       state: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        查询算法订单（止盈止损订单）
-        
-        Args:
-            symbol: 交易对符号，如果为None则返回所有
-            order_type: 订单类型（conditional, oco, trigger, move_order_stop, iceberg, twap）
-                      注意：对于通过attachAlgoOrds创建的止盈止损订单，查询时不需要传递此参数
-            state: 订单状态（live, effective, canceled, order_failed, system_canceled）
-            
-        Returns:
-            算法订单列表
-        """
+    def cancel_algo_order(self, symbol: str, algo_id: str) -> Dict[str, Any]:
+        """撤销算法订单（同步）"""
+        endpoint = "/api/v5/trade/cancel-algo-order"
+        data = {
+            'instId': symbol,
+            'algoId': algo_id
+        }
+        return self._request_sync('POST', endpoint, data=data)
+    
+    async def async_get_algo_orders(self, symbol: Optional[str] = None,
+                                    order_type: Optional[str] = None,
+                                    state: Optional[str] = None) -> List[Dict[str, Any]]:
+        """查询算法订单（异步）"""
         endpoint = "/api/v5/trade/orders-algo-pending"
-        params = {}
+        params: Dict[str, Any] = {}
+        inst_type = self._infer_inst_type(symbol)
+        params['instType'] = inst_type
         if symbol:
             params['instId'] = symbol
-        # 注意：完全不传递ordType参数，避免Parameter ordType error
-        # 对于通过attachAlgoOrds创建的止盈止损订单，查询时不需要传递ordType参数
-        # 即使order_type参数被传入，也不添加到params中
+        if order_type:
+            params['ordType'] = order_type
         if state:
             params['state'] = state
-        
         try:
-            result = self._request('GET', endpoint, params=params)
-            
-            # _request方法返回的是data字段，如果是列表则直接返回
-            if isinstance(result, list):
-                return result
-            # 如果是字典，尝试提取data字段
-            elif isinstance(result, dict):
-                # 如果result包含code字段，说明是完整的响应
-                if 'code' in result:
-                    if result.get('code') == '0':
-                        return result.get('data', [])
-                    else:
-                        error_msg = result.get('msg', '未知错误')
-                        self.logger.warning(f"查询算法订单失败: {error_msg}")
-                        return []
-                # 否则result本身就是data字段
-                else:
-                    # 如果result是字典但包含列表，尝试提取
-                    if 'data' in result:
-                        return result.get('data', [])
-                    # 如果result本身就是列表结构，返回空列表
-                    return []
-            else:
-                return []
-        except Exception as e:
+            result = await self._request('GET', endpoint, params=params)
+            return self._parse_algo_orders(result, state)
+        except APIException as e:
             error_str = str(e)
-            # 改进错误处理：对于400错误，尝试不传problematic参数重试
-            if '400' in error_str or '51000' in error_str:
-                # 如果错误包含ordType相关错误，说明可能有其他地方传递了ordType参数
-                # 由于我们已经不传递ordType参数，这个错误可能是API的误报
-                # 尝试不传任何可选参数重试（只保留instId）
-                if 'ordType' in error_str:
-                    self.logger.debug(f"查询算法订单失败（ordType错误），尝试只传instId参数重试: {e}")
-                    try:
-                        # 只保留instId参数重试
-                        params_minimal = {}
-                        if symbol:
-                            params_minimal['instId'] = symbol
-                        result = self._request('GET', endpoint, params=params_minimal)
-                        if isinstance(result, list):
-                            # 如果结果是列表，手动过滤state
-                            if state == 'live':
-                                return [order for order in result if order.get('state') == 'live']
-                            return result
-                        elif isinstance(result, dict):
-                            if 'code' in result and result.get('code') == '0':
-                                data = result.get('data', [])
-                                if state == 'live':
-                                    return [order for order in data if order.get('state') == 'live']
-                                return data
-                        return []
-                    except Exception as retry_e:
-                        self.logger.warning(f"查询算法订单重试失败（最小参数）: {retry_e}")
-                
-                # 如果错误包含state相关错误，尝试不传state参数重试
-                elif 'state' in error_str and state:
-                    self.logger.debug(f"查询算法订单失败（参数state={state}），尝试不传state参数重试: {e}")
-                    try:
-                        # 移除state参数重试
-                        params_no_state = {k: v for k, v in params.items() if k != 'state'}
-                        result = self._request('GET', endpoint, params=params_no_state)
-                        if isinstance(result, list):
-                            # 如果结果是列表，手动过滤state
-                            if state == 'live':
-                                return [order for order in result if order.get('state') == 'live']
-                            return result
-                        elif isinstance(result, dict):
-                            if 'code' in result and result.get('code') == '0':
-                                data = result.get('data', [])
-                                if state == 'live':
-                                    return [order for order in data if order.get('state') == 'live']
-                                return data
-                        return []
-                    except Exception as retry_e:
-                        self.logger.warning(f"查询算法订单重试失败（移除state后）: {retry_e}")
-            
-            # 如果重试失败或不是400错误，记录警告并返回空列表
+            if 'ordType' in error_str:
+                self.logger.debug(f"查询算法订单失败（ordType错误），尝试只传instId参数重试: {e}")
+                try:
+                    params_minimal: Dict[str, Any] = {}
+                    if symbol:
+                        params_minimal['instId'] = symbol
+                    result = await self._request('GET', endpoint, params=params_minimal)
+                    return self._parse_algo_orders(result, state)
+                except Exception as retry_e:
+                    self.logger.warning(f"查询算法订单重试失败（最小参数）: {retry_e}")
+            elif 'state' in error_str and state:
+                self.logger.debug(f"查询算法订单失败（state参数错误），尝试移除state参数重试: {e}")
+                try:
+                    params_no_state = {k: v for k, v in params.items() if k != 'state'}
+                    result = await self._request('GET', endpoint, params=params_no_state)
+                    return self._parse_algo_orders(result, state)
+                except Exception as retry_e:
+                    self.logger.warning(f"查询算法订单重试失败（移除state后）: {retry_e}")
             self.logger.warning(f"查询算法订单失败: {e}")
+            return []
+        except Exception as e:
+            self.logger.warning(f"查询算法订单出现异常: {e}")
+            return []
+    
+    def get_algo_orders(self, symbol: Optional[str] = None,
+                        order_type: Optional[str] = None,
+                        state: Optional[str] = None) -> List[Dict[str, Any]]:
+        """查询算法订单（同步）"""
+        endpoint = "/api/v5/trade/orders-algo-pending"
+        params: Dict[str, Any] = {}
+        inst_type = self._infer_inst_type(symbol)
+        params['instType'] = inst_type
+        if symbol:
+            params['instId'] = symbol
+        if order_type:
+            params['ordType'] = order_type
+        if state:
+            params['state'] = state
+        try:
+            result = self._request_sync('GET', endpoint, params=params)
+            return self._parse_algo_orders(result, state)
+        except APIException as e:
+            error_str = str(e)
+            if 'ordType' in error_str:
+                self.logger.debug(f"查询算法订单失败（ordType错误），尝试只传instId参数重试: {e}")
+                try:
+                    params_minimal: Dict[str, Any] = {}
+                    if symbol:
+                        params_minimal['instId'] = symbol
+                    result = self._request_sync('GET', endpoint, params=params_minimal)
+                    return self._parse_algo_orders(result, state)
+                except Exception as retry_e:
+                    self.logger.warning(f"查询算法订单重试失败（最小参数）: {retry_e}")
+            elif 'state' in error_str and state:
+                self.logger.debug(f"查询算法订单失败（state参数错误），尝试移除state参数重试: {e}")
+                try:
+                    params_no_state = {k: v for k, v in params.items() if k != 'state'}
+                    result = self._request_sync('GET', endpoint, params=params_no_state)
+                    return self._parse_algo_orders(result, state)
+                except Exception as retry_e:
+                    self.logger.warning(f"查询算法订单重试失败（移除state后）: {retry_e}")
+            self.logger.warning(f"查询算法订单失败: {e}")
+            return []
+        except Exception as e:
+            self.logger.warning(f"查询算法订单出现异常: {e}")
             return []
     
     def get_order_status(self, symbol: str, order_id: str) -> Dict[str, Any]:
-        """
-        查询订单状态
-        
-        Args:
-            symbol: 交易对符号
-            order_id: 订单ID
-            
-        Returns:
-            订单状态信息
-        """
+        """查询订单状态（同步）"""
         endpoint = "/api/v5/trade/order"
         params = {
             'instId': symbol,
             'ordId': order_id
         }
-        return self._request('GET', endpoint, params=params)
+        return self._request_sync('GET', endpoint, params=params)
     
-    def get_pending_orders(self, symbol: Optional[str] = None, 
-                          order_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def async_get_pending_orders(self, symbol: Optional[str] = None,
+                                       order_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        获取待处理的订单（委托）
-        
-        Args:
-            symbol: 交易对符号，如果为None则返回所有
-            order_type: 订单类型（market, limit, post_only, fok, ioc, optimal_limit_ioc）
-            
-        Returns:
-            待处理订单列表
+        获取待处理的订单（异步）
         """
         endpoint = "/api/v5/trade/orders-pending"
-        params = {}
+        params: Dict[str, Any] = {}
+        inst_type = self._infer_inst_type(symbol)
+        params['instType'] = inst_type
         if symbol:
             params['instId'] = symbol
         if order_type:
             params['ordType'] = order_type
-        
-        result = self._request('GET', endpoint, params=params)
-        
-        # OKX API返回格式：{"code":"0","data":[...],"msg":""}
-        if result and isinstance(result, dict):
-            if result.get('code') == '0':
+        try:
+            result = await self._request('GET', endpoint, params=params)
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
                 return result.get('data', [])
-        
+            return []
+        except APIException as e:
+            self.logger.warning(f"获取待处理订单失败: {e}")
+            return []
+        except Exception as e:
+            self.logger.warning(f"获取待处理订单出现异常: {e}")
+            return []
+    
+    def get_pending_orders(self, symbol: Optional[str] = None,
+                          order_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """获取待处理的订单（同步）"""
+        endpoint = "/api/v5/trade/orders-pending"
+        params: Dict[str, Any] = {}
+        inst_type = self._infer_inst_type(symbol)
+        params['instType'] = inst_type
+        if symbol:
+            params['instId'] = symbol
+        if order_type:
+            params['ordType'] = order_type
+        result = self._request_sync('GET', endpoint, params=params)
+        if isinstance(result, list):
+            return result
+        if isinstance(result, dict):
+            return result.get('data', [])
         return []
 
 

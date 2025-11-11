@@ -31,7 +31,21 @@ class DataProcessor:
         if not kline_data:
             return pd.DataFrame()
         
-        df = pd.DataFrame(kline_data)
+        # 确保kline_data是列表格式
+        if not isinstance(kline_data, list):
+            self.logger.error(f"K线数据格式错误: 期望列表，实际类型: {type(kline_data)}")
+            return pd.DataFrame()
+        
+        # 确保列表中的元素是字典
+        if len(kline_data) > 0 and not isinstance(kline_data[0], dict):
+            self.logger.error(f"K线数据格式错误: 期望字典列表，实际类型: {type(kline_data[0])}")
+            return pd.DataFrame()
+        
+        try:
+            df = pd.DataFrame(kline_data)
+        except Exception as e:
+            self.logger.error(f"创建DataFrame失败: {e}, 数据: {kline_data[:3] if len(kline_data) > 3 else kline_data}")
+            return pd.DataFrame()
         
         # 确保数据类型正确
         # 先将timestamp转换为数值类型，避免FutureWarning

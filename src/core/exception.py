@@ -48,3 +48,8 @@ class BalanceException(TradingException):
 class StrategyException(TradingSystemException):
     """策略异常"""
     pass
+
+
+class PaymentRequiredException(APIException):
+    """API需要付费异常（用于降级策略）"""
+    pass
