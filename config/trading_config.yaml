@@ -6,7 +6,7 @@ trading_pairs:
     min_order_size: 0.01
     price_precision: 2  # SOL价格精度（小数点后2位）
     size_precision: 2  # SOL数量精度
-    leverage: 10  # 杠杆倍数（1-125）- 已设置为10倍杠杆
+    leverage: 5  # 杠杆倍数（1-125）- 调低到5倍以降低噪声放大
     max_position: 1.0  # 最大持仓（1倍合约面值）
 
 # 合约交易配置
@@ -28,11 +28,11 @@ contract_trading:
 # 自动交易配置
 auto_trading:
   enabled: true  # 启用自动交易（根据决策自动买入卖出）
-  min_confidence: 0.25  # 大幅降低：抓住更多机会（>=0.25），确保能够交易
+  min_confidence: 0.5  # 提高最低信心度阈值，过滤低质量信号
   min_position_size: 0.005  # 最小仓位（0.5%），进一步降低以抓住更多小机会
   # 狼式交易策略：快速出击，快速撤退
-  quick_profit_target: 0.05  # 快速获利目标：5%就撤退（更快锁定利润，提高交易频率）
-  quick_stop_loss: 0.015  # 快速止损：账户盈亏1.5%就止损（10倍杠杆下价格变动0.15%）
+  quick_profit_target: 0.06  # 快速获利目标：账户盈亏6%（约等于价格1.2% @5x）
+  quick_stop_loss: 0.04  # 快速止损：账户盈亏4%（价格回撤约0.8% @5x）
 
 # 信号生成配置
 signal_generation:

@@ -7,19 +7,19 @@ position_management:
   fixed_usdt_per_trade: 1000  # 每次固定1000 USDT
   min_usdt_per_trade: 500  # 最小500 USDT
   max_usdt_per_trade: 2000  # 最大2000 USDT
-  
+
   # 比例模式配置（备用）
   base_position_size: 0.05  # 基础仓位5%（针对15分钟K线）
   max_position_size: 0.15  # 最大仓位15%（针对15分钟K线）
   min_position_size: 0.02  # 最小仓位2%
   max_total_position: 0.60  # 组合最大仓位60%
-  
+
   # 信心度倍数（参考ds-main）
   confidence_multipliers:
     high: 1.5  # HIGH信心度（>=0.8）
     medium: 1.0  # MEDIUM信心度（>=0.6）
     low: 0.5  # LOW信心度（<0.6）
-  
+
   # 信号强度倍数
   signal_strength_multipliers:
     strong: 1.2  # 强信号（>=0.7）
@@ -27,27 +27,27 @@ position_management:
     normal: 0.8  # 中等信号（>=0.5）
     weak: 0.6  # 弱信号（>=0.4）
     very_weak: 0.4  # 很弱信号（<0.4）
-  
+
   # 入场时机倍数
   entry_timing_multipliers:
     excellent: 1.1  # 优秀（>=70分）
     good: 1.0  # 良好（>=60分）
     normal: 0.9  # 一般（>=50分）
     poor: 0.8  # 较差（<50分）
-  
+
   # 波动率倍数（针对15分钟K线优化）
   volatility_multipliers:
     low: 1.2  # 低波动（<2%）
     medium: 1.0  # 中波动（2-4%）
     high: 0.8  # 高波动（4-6%）
     very_high: 0.6  # 极高波动（>6%）
-  
+
   # 趋势强度倍数
   trend_strength_multipliers:
     strong: 1.2  # 强趋势（强势上涨/下跌）
     medium: 1.0  # 中等趋势（温和上涨/下跌）
     weak: 0.8  # 震荡（震荡整理）
-  
+
   # 回撤控制倍数
   drawdown_multipliers:
     normal: 1.0  # 正常（<5%）
@@ -55,26 +55,26 @@ position_management:
     medium: 0.6  # 中等回撤（10-15%）
     large: 0.4  # 大幅回撤（15-20%）
     critical: 0.2  # 严重回撤（>20%）
-  
+
   # 风险限制
   risk_limits:
     max_risk_per_trade: 0.02  # 单笔最大风险2%
     max_position_per_trade: 0.15  # 单次最大仓位15%（针对15分钟K线）
     max_total_position: 0.60  # 组合最大仓位60%
-  
+
   # 回撤保护
   drawdown_protection:
     enabled: true
     max_drawdown: 0.20  # 最大回撤20%
     pause_at_drawdown: 0.20  # 回撤20%时暂停交易
-  
+
   # 动态仓位调整（保留原有功能）
   volatility_targeting:
     enabled: true
     target_volatility: 0.20  # 目标波动率20%
     min_volatility_coeff: 0.5
     max_volatility_coeff: 1.5
-  
+
   drawdown_control:
     enabled: true
     max_drawdown: 0.20  # 最大回撤20%
@@ -91,8 +91,8 @@ position_management:
 # 止损配置（参考ds-main：1%止损，3%止盈，1:3盈亏比）
 stop_loss:
   enabled: true
-  default_stop_loss_pct: 0.01  # 使用ds-main的严格止损：1%（更严格的风险控制）
-  max_stop_loss_pct: 0.012  # 最大止损1.2%（严格控制风险）
+  default_stop_loss_pct: 0.03  # 更宽的基础止损：3%
+  max_stop_loss_pct: 0.05  # 允许最大止损到5%以适应波动
   
   # 移动止损（像狼一样保护猎物）
   trailing_stop:

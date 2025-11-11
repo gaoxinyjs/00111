@@ -251,6 +251,7 @@ class DecisionEngine:
             deepseek_entry_price = None
             deepseek_exit_price = None
             deepseek_confidence = 0.0
+            analysis: Dict[str, Any] = {}
             
             # 查找DeepSeek信号
             for signal in signals:
@@ -292,10 +293,29 @@ class DecisionEngine:
                             f"方向={deepseek_direction} | "
                             f"开仓限价={entry_price_str} | "
                             f"平仓限价={exit_price_str} | "
-                            f"信心度={confidence_str} | "
-                            f"将严格执行DeepSeek的决策"
+                            f"信心度={confidence_str}"
                         )
                         break
+            
+            # 统一处理DeepSeek信心度和方向过滤
+            try:
+                deepseek_confidence_value = float(deepseek_confidence or 0.0)
+            except (ValueError, TypeError):
+                deepseek_confidence_value = 0.0
+            
+            if deepseek_direction == 'hold':
+                self.logger.info(f"{symbol}: DeepSeek建议观望，保持观望")
+                return None
+            
+            if deepseek_direction not in ['long', 'short']:
+                self.logger.info(f"{symbol}: DeepSeek未返回有效方向，保持观望")
+                return None
+            
+            if deepseek_confidence_value < 0.65:
+                self.logger.info(
+                    f"{symbol}: DeepSeek信心度{deepseek_confidence_value:.2f}低于阈值0.65，保持观望"
+                )
+                return None
             
             # 如果DeepSeek返回了明确的direction，严格执行
             if deepseek_direction in ['long', 'short']:
@@ -410,28 +430,15 @@ class DecisionEngine:
                     symbol, temp_signal, position_size, market_data, current_position
                 )
                 
-                # 如果风险评估未通过，记录警告但不阻止执行（DeepSeek决策优先级最高）
+                # 如果风险评估未通过则拒绝执行
                 if not risk_assessment.get('passed', False):
                     risk_level = risk_assessment.get('risk_level', 'unknown')
                     warnings = risk_assessment.get('warnings', [])
                     self.logger.warning(
-                        f"{symbol}: [DeepSeek决策] 风险评估未通过，但将严格执行DeepSeek的决策 | "
+                        f"{symbol}: [DeepSeek决策] 风险评估未通过，拒绝执行 | "
                         f"风险等级={risk_level}, 警告={'; '.join(warnings) if warnings else '无'}"
                     )
-                    # 即使风险评估未通过，也继续执行（但使用更保守的止损止盈：账户盈亏2%）
-                    # 获取杠杆倍数
-                    leverage = self._get_leverage(symbol)
-                    current_price = market_data.get('price', 0)
-                    if current_price > 0:
-                        if not risk_assessment.get('stop_loss') or not risk_assessment.get('take_profit'):
-                            # 计算考虑杠杆倍数的止盈止损（账户盈亏2%）
-                            stop_loss, take_profit = self._calculate_stop_loss_take_profit(
-                                current_price, action, account_pnl_pct=0.02, leverage=leverage
-                            )
-                            if not risk_assessment.get('stop_loss'):
-                                risk_assessment['stop_loss'] = stop_loss
-                            if not risk_assessment.get('take_profit'):
-                                risk_assessment['take_profit'] = take_profit
+                    return None
                 else:
                     self.logger.info(
                         f"{symbol}: [DeepSeek决策] 风险评估通过 | "

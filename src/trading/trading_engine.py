@@ -77,6 +77,9 @@ class TradingEngine:
         # key: symbol, value: {'entry_time': datetime, 'position_side': str, 'size': float}
         self.position_entry_times: Dict[str, Dict[str, Any]] = {}
         
+        # 跟踪已开仓的交易记录信息，用于平仓写入结果
+        self.active_trade_records: Dict[str, Dict[str, Any]] = {}
+        
         # 15分钟超时配置（秒）
         self.force_close_timeout = 15 * 60  # 15分钟 = 900秒（强制平仓）
         self.pending_order_timeout = 15 * 60  # 15分钟 = 900秒（挂单超时）
@@ -656,6 +659,9 @@ class TradingEngine:
                         
                         self.position_manager.update_position_from_order(order)
                         
+                        fill_price = order.average_price or order.filled_price or decision.price or symbol_market_data.get('price', 0)
+                        fill_time = order.executed_at or datetime.now()
+                        
                         # 更新决策引擎的交易时间（用于15分钟间隔检查）
                         self.decision_engine.trade_stats['last_trade_time'] = datetime.now()
                         self.logger.debug(
@@ -666,23 +672,34 @@ class TradingEngine:
                         
                         # 记录开仓时间（如果是开仓订单）
                         if not self._is_closing_position(symbol, decision.action):
-                            # 这是开仓订单，记录开仓时间
                             self.position_entry_times[symbol] = {
-                                'entry_time': datetime.now(),
+                                'entry_time': fill_time,
                                 'position_side': decision.position_side,
-                                'size': decision.position_size,
+                                'size': order.filled_size,
                                 'order_id': order.order_id
                             }
+                            # 记录用于后续结果写入的关键信息
+                            record_id = getattr(decision, '_record_id', None)
+                            if record_id:
+                                self.active_trade_records[symbol] = {
+                                    'record_id': record_id,
+                                    'entry_price': fill_price,
+                                    'entry_time': fill_time,
+                                    'position_side': decision.position_side,
+                                    'position_size': order.filled_size,
+                                    'entry_reason': decision.reasoning or 'open',
+                                    'ai_analysis': ai_analysis
+                                }
                             self.logger.info(
                                 f"📌 [记录开仓时间] {symbol}: {decision.position_side} | "
-                                f"开仓时间={datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | "
+                                f"开仓时间={fill_time.strftime('%Y-%m-%d %H:%M:%S')} | "
                                 f"将在15分钟后检查是否强制平仓"
                             )
                         else:
                             # 这是平仓订单，清除开仓时间记录
                             if symbol in self.position_entry_times:
                                 entry_time = self.position_entry_times[symbol].get('entry_time')
-                                hold_duration = (datetime.now() - entry_time).total_seconds() / 60 if entry_time else 0
+                                hold_duration = (fill_time - entry_time).total_seconds() / 60 if entry_time else 0
                                 del self.position_entry_times[symbol]
                                 self.logger.info(
                                     f"✅ [平仓清除时间记录] {symbol}: 持仓时长={hold_duration:.2f}分钟"
@@ -690,7 +707,15 @@ class TradingEngine:
                         
                         # 计算收益（如果是平仓）
                         if self._is_closing_position(symbol, decision.action):
-                            await self._calculate_profit(order, decision)
+                            trade_info = self.active_trade_records.pop(symbol, None) or {}
+                            trade_info.update({
+                                'exit_price': fill_price,
+                                'exit_time': fill_time,
+                                'exit_reason': decision.reasoning or decision.action,
+                                'order': order,
+                                'position_side': decision.position_side
+                            })
+                            await self._calculate_profit(order, trade_info)
                 
                 # 避免频繁交易
                 await asyncio.sleep(1)
@@ -1643,26 +1668,68 @@ class TradingEngine:
             self.logger.warning(f"比较决策相似性失败: {e}")
             return False  # 出错时认为有差异，允许创建新订单
     
-    async def _calculate_profit(self, order):
-        """计算交易收益"""
+    async def _calculate_profit(self, order, trade_info: Optional[Dict[str, Any]] = None):
+        """计算交易收益并写回结果记录"""
         try:
-            # 从订单中提取交易信息
-            # 这里需要从持仓记录中获取入场价格等信息
-            # 简化实现
+            trade_id = order.order_id
+            symbol = order.symbol
+            exit_price = trade_info.get('exit_price') if trade_info else None
+            if exit_price is None:
+                exit_price = order.average_price or order.filled_price or 0.0
+            
+            entry_price = trade_info.get('entry_price') if trade_info else 0.0
+            quantity = trade_info.get('position_size') if trade_info else order.filled_size
+            entry_time = trade_info.get('entry_time') if trade_info else (order.created_at or datetime.now())
+            exit_time = trade_info.get('exit_time') if trade_info else (order.executed_at or datetime.now())
+            position_side = trade_info.get('position_side') if trade_info else order.side
+            
+            if isinstance(position_side, str):
+                position_side = position_side.lower()
+                if position_side == 'buy':
+                    position_side = 'long'
+                elif position_side == 'sell':
+                    position_side = 'short'
+            else:
+                position_side = 'long'
+            
+            fees = getattr(order, 'fee', 0) or 0.0
+            
+            gross_profit = 0.0
+            profit_pct = 0.0
+            if entry_price and quantity:
+                if position_side == 'short':
+                    gross_profit = (entry_price - exit_price) * quantity
+                    profit_pct = ((entry_price - exit_price) / entry_price) * 100
+                else:
+                    gross_profit = (exit_price - entry_price) * quantity
+                    profit_pct = ((exit_price - entry_price) / entry_price) * 100
             
             trade_data = {
-                'trade_id': order.order_id,
-                'symbol': order.symbol,
-                'entry_time': order.created_at,
-                'exit_time': order.executed_at or datetime.now(),
-                'entry_price': 0,  # 需要从持仓记录获取
-                'exit_price': order.average_price or order.filled_price,
-                'quantity': order.filled_size,
-                'fees': 0  # 需要从订单数据获取
+                'trade_id': trade_id,
+                'symbol': symbol,
+                'entry_time': entry_time,
+                'exit_time': exit_time,
+                'entry_price': entry_price,
+                'exit_price': exit_price,
+                'quantity': quantity,
+                'fees': fees
             }
             
-            # 计算收益
             trade_profit = self.profit_statistics.calculate_trade_profit(trade_data)
+            
+            if trade_info and trade_info.get('record_id'):
+                holding_hours = (exit_time - entry_time).total_seconds() / 3600 if entry_time else 0.0
+                exit_reason = trade_info.get('exit_reason', 'close')
+                try:
+                    self.result_recorder.record_trade_result(
+                        record_id=trade_info['record_id'],
+                        exit_price=exit_price,
+                        profit_pct=profit_pct,
+                        holding_duration_hours=holding_hours,
+                        exit_reason=exit_reason
+                    )
+                except Exception as err:
+                    self.logger.error(f"写入交易结果失败 {symbol}: {err}")
             
             self.logger.info(
                 f"交易收益: {trade_profit.symbol} {trade_profit.trade_id}, "

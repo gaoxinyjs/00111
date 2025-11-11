@@ -179,11 +179,10 @@ class SignalGenerator:
                 else:
                     sell_tendency += (bb_position - 0.5) * 0.1
             
-            # 判断最终信号（像狼一样：平衡机会和质量，抓住更多机会）
-            # 降低最低强度阈值，抓住更多机会
-            min_strength = 0.20  # 降低最低强度阈值，抓住更多机会
-            
-            # 要求至少1-2个指标确认（降低要求以抓住更多机会）
+            # 判断最终信号：提高触发阈值，过滤噪声
+            min_strength = 0.35
+
+            # 统计满足条件的指标数量
             confirm_count = 0
             if macd_bullish or (macd_hist > 5):
                 confirm_count += 1
@@ -191,52 +190,36 @@ class SignalGenerator:
                 confirm_count += 1
             if bb_lower_touch or (bb_position < 0.3):
                 confirm_count += 1
-            
+
             # 计算倾向差异
             tendency_diff = abs(buy_tendency - sell_tendency)
-            
-            # 要求至少1个指标确认，或倾向差异明显（降低要求以抓住更多机会）
-            requires_confirmation = confirm_count >= 1 or tendency_diff > 0.12
+
+            # 要求至少两个指标确认或倾向差异显著
+            requires_confirmation = confirm_count >= 2 or tendency_diff > 0.18
             
             if buy_tendency > sell_tendency:
-                # 做多：降低要求以抓住更多机会（但仍保持质量）
-                if buy_tendency > min_strength and requires_confirmation:
-                    # 做多倾向明显且有确认
+                if buy_tendency >= min_strength and requires_confirmation:
                     signal_type = 'buy'
-                    strength = min(1.0, buy_tendency * 1.2)  # 增强确认的信号强度
-                elif buy_tendency > 0.25 and tendency_diff > 0.12:
-                    # 即使不是最强，但有明显的倾向（降低要求）
+                    strength = min(1.0, buy_tendency)
+                elif buy_tendency >= 0.40 and tendency_diff > 0.20:
                     signal_type = 'buy'
-                    strength = min(0.7, buy_tendency)
-                elif buy_tendency > 0.20 and tendency_diff > 0.08:
-                    # 进一步降低要求，抓住更多机会
+                    strength = min(0.75, buy_tendency)
+                elif buy_tendency >= 0.35 and tendency_diff > 0.25:
                     signal_type = 'buy'
-                    strength = min(0.6, buy_tendency)
-                elif buy_tendency > 0.15 and tendency_diff > 0.05:
-                    # 大幅降低要求，抓住任何可能的机会
-                    signal_type = 'buy'
-                    strength = min(0.55, buy_tendency)
+                    strength = min(0.65, buy_tendency)
                 else:
                     signal_type = 'hold'
                     strength = 0.0
             elif sell_tendency > buy_tendency:
-                # 做空：降低要求以抓住更多机会（但仍保持质量）
-                if sell_tendency > min_strength and requires_confirmation:
-                    # 做空倾向明显且有确认
+                if sell_tendency >= min_strength and requires_confirmation:
                     signal_type = 'sell'
-                    strength = min(1.0, sell_tendency * 1.2)  # 增强确认的信号强度
-                elif sell_tendency > 0.25 and tendency_diff > 0.12:
-                    # 即使不是最强，但有明显的倾向（降低要求）
+                    strength = min(1.0, sell_tendency)
+                elif sell_tendency >= 0.40 and tendency_diff > 0.20:
                     signal_type = 'sell'
-                    strength = min(0.7, sell_tendency)
-                elif sell_tendency > 0.20 and tendency_diff > 0.08:
-                    # 进一步降低要求，抓住更多机会
+                    strength = min(0.75, sell_tendency)
+                elif sell_tendency >= 0.35 and tendency_diff > 0.25:
                     signal_type = 'sell'
-                    strength = min(0.6, sell_tendency)
-                elif sell_tendency > 0.15 and tendency_diff > 0.05:
-                    # 大幅降低要求，抓住任何可能的机会
-                    signal_type = 'sell'
-                    strength = min(0.55, sell_tendency)
+                    strength = min(0.65, sell_tendency)
                 else:
                     signal_type = 'hold'
                     strength = 0.0
