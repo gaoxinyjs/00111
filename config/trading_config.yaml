@@ -35,6 +35,12 @@ auto_trading:
   quick_profit_target: 0.06  # 快速获利目标：账户盈亏6%（约等于价格1.2% @5x）
   quick_stop_loss: 0.04  # 快速止损：账户盈亏4%（价格回撤约0.8% @5x）
 
+# AI 仓位管理配置
+ai_position_management:
+  enabled: true  # 启用AI仓位审查与动态调整
+  review_interval: 60  # 审查间隔（秒），默认每分钟检查一次
+  max_adjustments_per_cycle: 3  # 单次审查最多执行的调整笔数，防止过度频繁操作
+
 # 信号生成配置
 signal_generation:
   # 技术面信号
