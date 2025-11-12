@@ -238,7 +238,8 @@ class AIPositionManager:
             return None, None
     
     def should_adjust_position(self, symbol: str, position: Dict[str, Any],
-                               market_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+                               market_data: Dict[str, Any],
+                               enable_ai: bool = True) -> Optional[Dict[str, Any]]:
         """
         判断是否应该调整仓位
         
@@ -246,37 +247,12 @@ class AIPositionManager:
             symbol: 交易对符号
             position: 当前持仓
             market_data: 市场数据
+            enable_ai: 是否调用AI分析（设为False时仅执行风险检查）
         
         Returns:
             仓位调整建议（action: add/reduce/close/hold, adjust_size: 调整比例）
         """
         try:
-            # AI分析持仓
-            analysis = self.analyze_position(symbol, position, market_data)
-            
-            action = analysis.get('action', 'hold')
-            adjust_size = analysis.get('adjust_size', 0.0)
-            confidence = analysis.get('confidence', 0.0)
-            profit_pct = analysis.get('profit_pct', 0.0)
-            
-            # 检查是否应该执行调整
-            min_confidence = 0.3  # 降低最小信心度阈值，确保止损止盈能触发
-            
-            # 如果AI分析失败或返回hold，仍然检查止损止盈
-            if action == 'hold' and confidence < min_confidence:
-                # AI建议hold且信心度低，但还是要检查止损止盈
-                pass
-            elif action == 'hold' or confidence < min_confidence:
-                # 如果只是hold且信心度低，继续检查止损止盈
-                pass
-            
-            # 计算动态止损止盈
-            stop_loss_price, take_profit_price = self.calculate_dynamic_stop_loss(
-                symbol, position, market_data
-            )
-            
-            # 检查是否触发止损止盈
-            current_price = market_data.get('price', 0)
             # 兼容不同的持仓方向格式
             position_side_raw = position.get('side', 'long')
             if position_side_raw == 'buy':
@@ -286,6 +262,41 @@ class AIPositionManager:
             else:
                 position_side = position_side_raw
             
+            entry_price = position.get('avg_price', 0) or position.get('average_price', 0)
+            current_price = market_data.get('price', 0)
+            position_size = float(position.get('size', 0) or position.get('position_size', 0))
+            
+            if position_size <= 0 or entry_price <= 0 or current_price <= 0:
+                return None
+            
+            if position_side == 'long':
+                profit_pct = ((current_price - entry_price) / entry_price) * 100
+            else:  # short
+                profit_pct = ((entry_price - current_price) / entry_price) * 100
+            
+            action = 'hold'
+            adjust_size = 0.0
+            confidence = 0.0
+            reason = ''
+            analysis_payload: Dict[str, Any] = {}
+            
+            if enable_ai:
+                analysis = self.analyze_position(symbol, position, market_data)
+                action = analysis.get('action', 'hold')
+                adjust_size = analysis.get('adjust_size', 0.0)
+                confidence = analysis.get('confidence', 0.0)
+                reason = analysis.get('reason', '')
+                analysis_payload = analysis.get('analysis', {})
+                profit_pct = analysis.get('profit_pct', profit_pct)
+            else:
+                reason = 'AI分析已禁用'
+            
+            # 计算动态止损止盈
+            stop_loss_price, take_profit_price = self.calculate_dynamic_stop_loss(
+                symbol, position, market_data
+            )
+            
+            # 检查是否触发止损止盈
             if stop_loss_price and current_price > 0:
                 if position_side == 'long' and current_price <= stop_loss_price:
                     # 触发止损
@@ -293,7 +304,12 @@ class AIPositionManager:
                         'action': 'close',
                         'reason': f'触发止损：当前价格{current_price} <= 止损价{stop_loss_price:.2f}',
                         'adjust_size': 1.0,
-                        'stop_loss_triggered': True
+                        'stop_loss_triggered': True,
+                        'confidence': max(confidence, 0.9),
+                        'profit_pct': profit_pct,
+                        'stop_loss_price': stop_loss_price,
+                        'take_profit_price': take_profit_price,
+                        'analysis': analysis_payload
                     }
                 elif position_side == 'short' and current_price >= stop_loss_price:
                     # 触发止损
@@ -301,7 +317,12 @@ class AIPositionManager:
                         'action': 'close',
                         'reason': f'触发止损：当前价格{current_price} >= 止损价{stop_loss_price:.2f}',
                         'adjust_size': 1.0,
-                        'stop_loss_triggered': True
+                        'stop_loss_triggered': True,
+                        'confidence': max(confidence, 0.9),
+                        'profit_pct': profit_pct,
+                        'stop_loss_price': stop_loss_price,
+                        'take_profit_price': take_profit_price,
+                        'analysis': analysis_payload
                     }
             
             if take_profit_price and current_price > 0:
@@ -311,7 +332,12 @@ class AIPositionManager:
                         'action': 'close',
                         'reason': f'触发止盈：当前价格{current_price} >= 止盈价{take_profit_price:.2f}',
                         'adjust_size': 1.0,
-                        'take_profit_triggered': True
+                        'take_profit_triggered': True,
+                        'confidence': max(confidence, 0.9),
+                        'profit_pct': profit_pct,
+                        'stop_loss_price': stop_loss_price,
+                        'take_profit_price': take_profit_price,
+                        'analysis': analysis_payload
                     }
                 elif position_side == 'short' and current_price <= take_profit_price:
                     # 触发止盈
@@ -319,7 +345,12 @@ class AIPositionManager:
                         'action': 'close',
                         'reason': f'触发止盈：当前价格{current_price} <= 止盈价{take_profit_price:.2f}',
                         'adjust_size': 1.0,
-                        'take_profit_triggered': True
+                        'take_profit_triggered': True,
+                        'confidence': max(confidence, 0.9),
+                        'profit_pct': profit_pct,
+                        'stop_loss_price': stop_loss_price,
+                        'take_profit_price': take_profit_price,
+                        'analysis': analysis_payload
                     }
             
             # 像狼一样：获利就跑，亏损就撤（快速出击，快速撤退）
@@ -332,7 +363,8 @@ class AIPositionManager:
                     'confidence': 0.95,
                     'profit_pct': profit_pct,
                     'take_profit_triggered': True,
-                    'wolf_strategy': True  # 标记为狼式策略
+                    'wolf_strategy': True,  # 标记为狼式策略
+                    'analysis': analysis_payload
                 }
             
             # 检查是否达到快速止损条件（亏损超过2%立即止损，像狼一样保护自己）
@@ -344,27 +376,30 @@ class AIPositionManager:
                     'confidence': 0.95,
                     'profit_pct': profit_pct,
                     'stop_loss_triggered': True,
-                    'wolf_strategy': True  # 标记为狼式策略
+                    'wolf_strategy': True,  # 标记为狼式策略
+                    'analysis': analysis_payload
                 }
             
             # 如果AI建议调整仓位且未触发止损止盈
-            if action in ['add', 'reduce']:
+            if enable_ai and action in ['add', 'reduce']:
                 return {
                     'action': action,
-                    'reason': analysis.get('reason', ''),
+                    'reason': reason,
                     'adjust_size': adjust_size,
                     'confidence': confidence,
                     'profit_pct': profit_pct,
                     'stop_loss_price': stop_loss_price,
-                    'take_profit_price': take_profit_price
+                    'take_profit_price': take_profit_price,
+                    'analysis': analysis_payload
                 }
-            elif action == 'close':
+            elif enable_ai and action == 'close':
                 return {
                     'action': 'close',
-                    'reason': analysis.get('reason', ''),
+                    'reason': reason,
                     'adjust_size': 1.0,
                     'confidence': confidence,
-                    'profit_pct': profit_pct
+                    'profit_pct': profit_pct,
+                    'analysis': analysis_payload
                 }
             
             return None

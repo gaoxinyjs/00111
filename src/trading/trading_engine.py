@@ -90,6 +90,20 @@ class TradingEngine:
         self.min_confidence = auto_trading_config.get('min_confidence', 0.3)
         self.min_position_size = auto_trading_config.get('min_position_size', 0.01)
         
+        ai_position_config = self.config_mgr.get_config('trading', 'ai_position_management', {}) or {}
+        self.ai_review_enabled = ai_position_config.get('enabled', True)
+        try:
+            self.ai_review_interval = max(int(ai_position_config.get('review_interval', 60)), 5)
+        except (TypeError, ValueError):
+            self.ai_review_interval = 60
+        max_adj = ai_position_config.get('max_adjustments_per_cycle')
+        try:
+            max_adj_val = int(max_adj)
+            self.ai_review_max_adjustments = max_adj_val if max_adj_val > 0 else None
+        except (TypeError, ValueError):
+            self.ai_review_max_adjustments = None
+        self.ai_review_task = None
+        
         # 注册数据回调
         self._register_callbacks()
     
@@ -124,6 +138,10 @@ class TradingEngine:
             # 2.1. 启动快速止损检查任务（每5秒检查一次，保护资金）
             asyncio.create_task(self._rapid_stop_loss_check_loop())
             
+            # 2.2. 启动AI仓位审查任务（按配置间隔执行）
+            if self.ai_review_enabled and self.ai_review_task is None:
+                self.ai_review_task = asyncio.create_task(self._ai_position_review_loop())
+            
             # 3. 启动主交易循环
             await self._main_trading_loop()
         
@@ -140,6 +158,15 @@ class TradingEngine:
         
         # 取消所有未完成的订单
         await self._cancel_all_orders()
+        
+        # 取消AI审查任务
+        if self.ai_review_task:
+            self.ai_review_task.cancel()
+            try:
+                await self.ai_review_task
+            except asyncio.CancelledError:
+                pass
+            self.ai_review_task = None
         
         self.logger.info("交易引擎已停止")
     
@@ -211,7 +238,10 @@ class TradingEngine:
                 decisions = await self._make_decisions(market_data, filtered_signals)
                 
                 # 5.1. AI仓位管理和智能平仓检查（在生成新决策前）
-                await self._check_position_adjustments(market_data)
+                await self._check_position_adjustments(
+                    market_data,
+                    enable_ai_analysis=False
+                )
                 
                 # 6. 执行交易
                 await self._execute_trades(decisions)
@@ -220,7 +250,10 @@ class TradingEngine:
                 await self._update_positions()
                 
                 # 7.1. 持仓止损检查（更新持仓后立即检查） - 更频繁的止损保护
-                await self._check_position_adjustments(market_data)
+                await self._check_position_adjustments(
+                    market_data,
+                    enable_ai_analysis=False
+                )
                 
                 # 7.2. 检查15分钟强制平仓（每15分钟检查一次）
                 await self._check_force_close_positions(market_data)
@@ -238,9 +271,12 @@ class TradingEngine:
                 self.logger.error(f"主交易循环出错: {e}")
                 await asyncio.sleep(10)  # 出错后等待10秒再继续
     
-    async def _collect_market_data(self) -> Dict[str, Dict[str, Any]]:
+    async def _collect_market_data(self, symbols: Optional[List[str]] = None) -> Dict[str, Dict[str, Any]]:
         """
         收集市场数据
+        
+        Args:
+            symbols: 需要收集的交易对列表（为None时收集全部配置的交易对）
         
         Returns:
             市场数据字典（按交易对索引）
@@ -250,12 +286,15 @@ class TradingEngine:
         try:
             # 获取所有交易对的数据
             trading_pairs = self.config_mgr.get_config('trading', 'trading_pairs')
+            symbols_filter = set(symbols) if symbols else None
             
             for pair in trading_pairs:
                 if not pair.get('enabled', True):
                     continue
                 
                 symbol = pair.get('symbol')
+                if symbols_filter and symbol not in symbols_filter:
+                    continue
                 
                 try:
                     # 获取行情（异步）
@@ -390,6 +429,11 @@ class TradingEngine:
                 
                 except Exception as e:
                     self.logger.error(f"收集{symbol}市场数据失败: {e}")
+            
+            if symbols_filter:
+                missing_symbols = symbols_filter - set(market_data.keys())
+                for symbol in missing_symbols:
+                    self.logger.warning(f"请求的交易对{symbol}未在交易配置中找到或数据收集失败")
         
         except Exception as e:
             self.logger.error(f"收集市场数据失败: {e}")
@@ -723,14 +767,24 @@ class TradingEngine:
             except Exception as e:
                 self.logger.error(f"执行交易失败 {decision.symbol}: {e}")
     
-    async def _check_position_adjustments(self, market_data: Dict[str, Dict[str, Any]]):
+    async def _check_position_adjustments(self, market_data: Dict[str, Dict[str, Any]],
+                                          enable_ai_analysis: bool = True,
+                                          max_adjustments: Optional[int] = None,
+                                          source: str = "default"):
         """
         检查并执行AI仓位调整和智能平仓（包含快速止损止盈检查）
         
         Args:
             market_data: 市场数据
+            enable_ai_analysis: 是否调用AI分析模块
+            max_adjustments: 单次检查允许执行的最大非风险调整次数
+            source: 日志标记，用于识别触发来源
         """
         try:
+            adjustments_executed = 0
+            max_adjustments = max_adjustments if max_adjustments and max_adjustments > 0 else None
+            source_tag = f"@{source}" if source and source != "default" else ""
+            
             # ⚠️ 首先从API实时获取最新持仓数据（确保数据准确）
             try:
                 if self.okx_client is None:
@@ -807,28 +861,57 @@ class TradingEngine:
                     
                     # AI分析是否应该调整仓位
                     adjustment = self.ai_position_manager.should_adjust_position(
-                        symbol, position, symbol_market_data
+                        symbol, position, symbol_market_data,
+                        enable_ai=enable_ai_analysis
                     )
                     
                     if adjustment:
                         action = adjustment.get('action')
                         adjust_size = adjustment.get('adjust_size', 0.0)
                         reason = adjustment.get('reason', '')
+                        is_risk_event = any(
+                            adjustment.get(flag)
+                            for flag in ['stop_loss_triggered', 'take_profit_triggered', 'wolf_strategy']
+                        )
+                        
+                        if max_adjustments and not is_risk_event and adjustments_executed >= max_adjustments:
+                            self.logger.info(
+                                f"[AI仓位调整{source_tag}] {symbol}: "
+                                f"已达到本轮最大调整次数{max_adjustments}，跳过{action}"
+                            )
+                            continue
+                        
+                        adjust_size_str = (
+                            f"{float(adjust_size):.2%}" if isinstance(adjust_size, (int, float)) else str(adjust_size)
+                        )
                         
                         self.logger.info(
-                            f"[AI仓位调整] {symbol}: 建议{action}, "
-                            f"调整比例: {adjust_size:.2%}, "
+                            f"[AI仓位调整{source_tag}] {symbol}: 建议{action}, "
+                            f"调整比例: {adjust_size_str}, "
                             f"原因: {reason}"
                         )
                         
                         # 生成调整决策
-                        decision = await self._create_adjustment_decision(
-                            symbol, position, adjustment, symbol_market_data
-                        )
+                        if action == 'close':
+                            trigger_price = adjustment.get('stop_loss_price') or adjustment.get('take_profit_price') \
+                                or symbol_market_data.get('price', 0)
+                            decision = await self._create_close_decision(
+                                symbol, position, reason or 'AI建议平仓', symbol_market_data, trigger_price
+                            )
+                        else:
+                            decision = await self._create_adjustment_decision(
+                                symbol, position, adjustment, symbol_market_data
+                            )
                         
                         if decision:
                             # 执行调整
                             await self._execute_trades([decision])
+                            
+                            if max_adjustments and not is_risk_event:
+                                adjustments_executed += 1
+                            
+                            # 已执行调整，无需重复执行后续检查
+                            continue
                     
                     # 获取当前价格（优先使用API的标记价格，其次使用市场数据）
                     current_price = position.get('mark_price', 0) or symbol_market_data.get('price', 0)
@@ -1434,7 +1517,10 @@ class TradingEngine:
                     market_data = await self._collect_market_data()
                     if market_data:
                         # 执行快速止损检查
-                        await self._check_position_adjustments(market_data)
+                        await self._check_position_adjustments(
+                            market_data,
+                            enable_ai_analysis=False
+                        )
                 except Exception as e:
                     self.logger.debug(f"快速止损检查出错（可忽略）: {e}")
                     continue
@@ -1445,6 +1531,51 @@ class TradingEngine:
             except Exception as e:
                 self.logger.error(f"快速止损检查循环出错: {e}", exc_info=True)
                 await asyncio.sleep(check_interval)  # 出错后等待再继续
+    
+    async def _ai_position_review_loop(self):
+        """
+        AI持仓审查循环：按配置的间隔触发AI分析，动态调整仓位
+        """
+        if not self.ai_review_enabled:
+            return
+        
+        self.logger.info(f"AI仓位审查任务启动，检查间隔: {self.ai_review_interval}秒")
+        
+        try:
+            while self.is_running:
+                cycle_start = datetime.now()
+                
+                try:
+                    positions = self.position_manager.get_all_positions()
+                    symbols = [
+                        symbol for symbol, pos in positions.items()
+                        if pos.get('size', 0) > 0
+                    ]
+                    
+                    if not symbols:
+                        self.logger.debug("[AI仓位审查] 当前无持仓，跳过本次检查")
+                    else:
+                        market_data = await self._collect_market_data(symbols)
+                        if market_data:
+                            await self._check_position_adjustments(
+                                market_data,
+                                enable_ai_analysis=True,
+                                max_adjustments=self.ai_review_max_adjustments,
+                                source="ai_review"
+                            )
+                        else:
+                            self.logger.debug("[AI仓位审查] 市场数据为空，跳过本次检查")
+                except Exception as loop_err:
+                    self.logger.error(f"AI仓位审查执行失败: {loop_err}", exc_info=True)
+                
+                elapsed = (datetime.now() - cycle_start).total_seconds()
+                sleep_time = max(self.ai_review_interval - elapsed, 1)
+                await asyncio.sleep(sleep_time)
+        
+        except asyncio.CancelledError:
+            self.logger.info("AI仓位审查任务已取消")
+        except Exception as e:
+            self.logger.error(f"AI仓位审查任务异常: {e}", exc_info=True)
     
     async def _check_pending_orders_timeout(self, market_data: Dict[str, Dict[str, Any]]):
         """
