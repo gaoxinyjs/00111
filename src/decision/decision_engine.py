@@ -252,6 +252,8 @@ class DecisionEngine:
             deepseek_exit_price = None
             deepseek_confidence = 0.0
             analysis: Dict[str, Any] = {}
+            auto_trading_cfg = self.config_mgr.get_config('trading', 'auto_trading', {})
+            min_confidence_cfg = auto_trading_cfg.get('min_confidence', 0.3)
             
             # 查找DeepSeek信号
             for signal in signals:
@@ -304,6 +306,9 @@ class DecisionEngine:
                 deepseek_confidence_value = 0.0
             
             if deepseek_direction == 'hold':
+                if current_position and current_position.get('size', 0) > 0:
+                    self.logger.info(f"{symbol}: DeepSeek建议观望，准备平仓当前持仓")
+                    return self._build_close_decision(symbol, current_position, analysis, reason='AI建议观望')
                 self.logger.info(f"{symbol}: DeepSeek建议观望，保持观望")
                 return None
             
@@ -315,7 +320,27 @@ class DecisionEngine:
                 self.logger.info(
                     f"{symbol}: DeepSeek信心度{deepseek_confidence_value:.2f}低于阈值0.65，保持观望"
                 )
+                if current_position and current_position.get('size', 0) > 0:
+                    self.logger.info(f"{symbol}: DeepSeek信心度过低，准备平仓当前持仓")
+                    return self._build_close_decision(symbol, current_position, analysis, reason='AI信心度不足')
                 return None
+            
+            if current_position and current_position.get('size', 0) > 0:
+                current_side = current_position.get('side', '')
+                if current_side == 'buy':
+                    current_side = 'long'
+                elif current_side == 'sell':
+                    current_side = 'short'
+                if deepseek_direction != current_side:
+                    self.logger.info(
+                        f"{symbol}: DeepSeek方向{deepseek_direction}与当前持仓{current_side}相反，准备平仓"
+                    )
+                    return self._build_close_decision(symbol, current_position, analysis, reason='AI方向反转')
+                if deepseek_confidence_value < min_confidence_cfg:
+                    self.logger.info(
+                        f"{symbol}: DeepSeek信心度{deepseek_confidence_value:.2f}低于最小持仓阈值{min_confidence_cfg:.2f}，准备平仓"
+                    )
+                    return self._build_close_decision(symbol, current_position, analysis, reason='AI信心度低于最小阈值')
             
             # 如果DeepSeek返回了明确的direction，严格执行
             if deepseek_direction in ['long', 'short']:
@@ -1064,6 +1089,42 @@ class DecisionEngine:
             self.logger.error(f"生成交易决策失败 {symbol}: {e}")
             raise StrategyException(f"生成交易决策失败: {e}")
     
+    def _build_close_decision(self, symbol: str, current_position: Dict[str, Any],
+                              analysis: Dict[str, Any], reason: str) -> TradingDecision:
+        """构建AI触发的平仓决策"""
+        position_side_raw = current_position.get('side', 'long')
+        if position_side_raw == 'buy':
+            position_side = 'long'
+        elif position_side_raw == 'sell':
+            position_side = 'short'
+        else:
+            position_side = position_side_raw
+
+        if position_side == 'long':
+            decision_action = 'close_long'
+        else:
+            decision_action = 'close_short'
+
+        confidence_val = 0.8
+        try:
+            confidence_val = float(analysis.get('confidence', confidence_val))
+        except (TypeError, ValueError):
+            confidence_val = 0.8
+
+        return TradingDecision(
+            symbol=symbol,
+            action=decision_action,
+            position_size=1.0,
+            position_side=position_side,
+            price=None,
+            stop_loss=None,
+            take_profit=None,
+            confidence=max(confidence_val, 0.7),
+            reasoning=reason,
+            signals=[{'source': 'ai', 'analysis': analysis}],
+            risk_assessment={'reason': reason, 'trigger': 'ai_exit'}
+        )
+
     def _calculate_optimal_entry_price(self, symbol: str, action: str, position_side: str,
                                       market_data: Dict[str, Any], signal: Signal) -> Optional[float]:
         """
