@@ -251,6 +251,9 @@ class DecisionEngine:
             deepseek_entry_price = None
             deepseek_exit_price = None
             deepseek_confidence = 0.0
+            analysis: Dict[str, Any] = {}
+            auto_trading_cfg = self.config_mgr.get_config('trading', 'auto_trading', {})
+            min_confidence_cfg = auto_trading_cfg.get('min_confidence', 0.3)
             
             # 查找DeepSeek信号
             for signal in signals:
@@ -292,10 +295,52 @@ class DecisionEngine:
                             f"方向={deepseek_direction} | "
                             f"开仓限价={entry_price_str} | "
                             f"平仓限价={exit_price_str} | "
-                            f"信心度={confidence_str} | "
-                            f"将严格执行DeepSeek的决策"
+                            f"信心度={confidence_str}"
                         )
                         break
+            
+            # 统一处理DeepSeek信心度和方向过滤
+            try:
+                deepseek_confidence_value = float(deepseek_confidence or 0.0)
+            except (ValueError, TypeError):
+                deepseek_confidence_value = 0.0
+            
+            if deepseek_direction == 'hold':
+                if current_position and current_position.get('size', 0) > 0:
+                    self.logger.info(f"{symbol}: DeepSeek建议观望，准备平仓当前持仓")
+                    return self._build_close_decision(symbol, current_position, analysis, reason='AI建议观望')
+                self.logger.info(f"{symbol}: DeepSeek建议观望，保持观望")
+                return None
+            
+            if deepseek_direction not in ['long', 'short']:
+                self.logger.info(f"{symbol}: DeepSeek未返回有效方向，保持观望")
+                return None
+            
+            if deepseek_confidence_value < 0.65:
+                self.logger.info(
+                    f"{symbol}: DeepSeek信心度{deepseek_confidence_value:.2f}低于阈值0.65，保持观望"
+                )
+                if current_position and current_position.get('size', 0) > 0:
+                    self.logger.info(f"{symbol}: DeepSeek信心度过低，准备平仓当前持仓")
+                    return self._build_close_decision(symbol, current_position, analysis, reason='AI信心度不足')
+                return None
+            
+            if current_position and current_position.get('size', 0) > 0:
+                current_side = current_position.get('side', '')
+                if current_side == 'buy':
+                    current_side = 'long'
+                elif current_side == 'sell':
+                    current_side = 'short'
+                if deepseek_direction != current_side:
+                    self.logger.info(
+                        f"{symbol}: DeepSeek方向{deepseek_direction}与当前持仓{current_side}相反，准备平仓"
+                    )
+                    return self._build_close_decision(symbol, current_position, analysis, reason='AI方向反转')
+                if deepseek_confidence_value < min_confidence_cfg:
+                    self.logger.info(
+                        f"{symbol}: DeepSeek信心度{deepseek_confidence_value:.2f}低于最小持仓阈值{min_confidence_cfg:.2f}，准备平仓"
+                    )
+                    return self._build_close_decision(symbol, current_position, analysis, reason='AI信心度低于最小阈值')
             
             # 如果DeepSeek返回了明确的direction，严格执行
             if deepseek_direction in ['long', 'short']:
@@ -312,6 +357,20 @@ class DecisionEngine:
                 else:  # short
                     action = 'short'
                     position_side = 'short'
+
+                signal_score = self._calculate_signal_bias(symbol, signals)
+                entry_threshold = auto_trading_cfg.get('entry_signal_threshold', 0.35)
+                if (not current_position or current_position.get('size', 0) == 0):
+                    if deepseek_direction == 'long' and signal_score < entry_threshold:
+                        self.logger.info(
+                            f"{symbol}: 多因子评分{signal_score:.2f} < 入场阈值{entry_threshold:.2f}，保持观望"
+                        )
+                        return None
+                    if deepseek_direction == 'short' and signal_score > -entry_threshold:
+                        self.logger.info(
+                            f"{symbol}: 多因子评分{signal_score:.2f} > -{entry_threshold:.2f}，保持观望"
+                        )
+                        return None
                 
                 # 检查当前持仓
                 contract_config = self.config_mgr.get_config('trading', 'contract_trading', {})
@@ -410,28 +469,15 @@ class DecisionEngine:
                     symbol, temp_signal, position_size, market_data, current_position
                 )
                 
-                # 如果风险评估未通过，记录警告但不阻止执行（DeepSeek决策优先级最高）
+                # 如果风险评估未通过则拒绝执行
                 if not risk_assessment.get('passed', False):
                     risk_level = risk_assessment.get('risk_level', 'unknown')
                     warnings = risk_assessment.get('warnings', [])
                     self.logger.warning(
-                        f"{symbol}: [DeepSeek决策] 风险评估未通过，但将严格执行DeepSeek的决策 | "
+                        f"{symbol}: [DeepSeek决策] 风险评估未通过，拒绝执行 | "
                         f"风险等级={risk_level}, 警告={'; '.join(warnings) if warnings else '无'}"
                     )
-                    # 即使风险评估未通过，也继续执行（但使用更保守的止损止盈：账户盈亏2%）
-                    # 获取杠杆倍数
-                    leverage = self._get_leverage(symbol)
-                    current_price = market_data.get('price', 0)
-                    if current_price > 0:
-                        if not risk_assessment.get('stop_loss') or not risk_assessment.get('take_profit'):
-                            # 计算考虑杠杆倍数的止盈止损（账户盈亏2%）
-                            stop_loss, take_profit = self._calculate_stop_loss_take_profit(
-                                current_price, action, account_pnl_pct=0.02, leverage=leverage
-                            )
-                            if not risk_assessment.get('stop_loss'):
-                                risk_assessment['stop_loss'] = stop_loss
-                            if not risk_assessment.get('take_profit'):
-                                risk_assessment['take_profit'] = take_profit
+                    return None
                 else:
                     self.logger.info(
                         f"{symbol}: [DeepSeek决策] 风险评估通过 | "
@@ -1057,6 +1103,57 @@ class DecisionEngine:
             self.logger.error(f"生成交易决策失败 {symbol}: {e}")
             raise StrategyException(f"生成交易决策失败: {e}")
     
+    def _build_close_decision(self, symbol: str, current_position: Dict[str, Any],
+                              analysis: Dict[str, Any], reason: str) -> TradingDecision:
+        """构建AI触发的平仓决策"""
+        position_side_raw = current_position.get('side', 'long')
+        if position_side_raw == 'buy':
+            position_side = 'long'
+        elif position_side_raw == 'sell':
+            position_side = 'short'
+        else:
+            position_side = position_side_raw
+
+        if position_side == 'long':
+            decision_action = 'close_long'
+        else:
+            decision_action = 'close_short'
+
+        confidence_val = 0.8
+        try:
+            confidence_val = float(analysis.get('confidence', confidence_val))
+        except (TypeError, ValueError):
+            confidence_val = 0.8
+
+        return TradingDecision(
+            symbol=symbol,
+            action=decision_action,
+            position_size=1.0,
+            position_side=position_side,
+            price=None,
+            stop_loss=None,
+            take_profit=None,
+            confidence=max(confidence_val, 0.7),
+            reasoning=reason,
+            signals=[{'source': 'ai', 'analysis': analysis}],
+            risk_assessment={'reason': reason, 'trigger': 'ai_exit'}
+        )
+
+    def _calculate_signal_bias(self, symbol: str, signals: List[Signal]) -> float:
+        """根据全部信号计算多因子方向倾向"""
+        score = 0.0
+        for signal in signals:
+            try:
+                if signal.symbol != symbol:
+                    continue
+                if signal.type == 'buy':
+                    score += float(signal.strength or 0.0)
+                elif signal.type == 'sell':
+                    score -= float(signal.strength or 0.0)
+            except Exception:
+                continue
+        return score
+
     def _calculate_optimal_entry_price(self, symbol: str, action: str, position_side: str,
                                       market_data: Dict[str, Any], signal: Signal) -> Optional[float]:
         """
