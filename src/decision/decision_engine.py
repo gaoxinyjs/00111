@@ -357,6 +357,20 @@ class DecisionEngine:
                 else:  # short
                     action = 'short'
                     position_side = 'short'
+
+                signal_score = self._calculate_signal_bias(symbol, signals)
+                entry_threshold = auto_trading_cfg.get('entry_signal_threshold', 0.35)
+                if (not current_position or current_position.get('size', 0) == 0):
+                    if deepseek_direction == 'long' and signal_score < entry_threshold:
+                        self.logger.info(
+                            f"{symbol}: 多因子评分{signal_score:.2f} < 入场阈值{entry_threshold:.2f}，保持观望"
+                        )
+                        return None
+                    if deepseek_direction == 'short' and signal_score > -entry_threshold:
+                        self.logger.info(
+                            f"{symbol}: 多因子评分{signal_score:.2f} > -{entry_threshold:.2f}，保持观望"
+                        )
+                        return None
                 
                 # 检查当前持仓
                 contract_config = self.config_mgr.get_config('trading', 'contract_trading', {})
@@ -1124,6 +1138,21 @@ class DecisionEngine:
             signals=[{'source': 'ai', 'analysis': analysis}],
             risk_assessment={'reason': reason, 'trigger': 'ai_exit'}
         )
+
+    def _calculate_signal_bias(self, symbol: str, signals: List[Signal]) -> float:
+        """根据全部信号计算多因子方向倾向"""
+        score = 0.0
+        for signal in signals:
+            try:
+                if signal.symbol != symbol:
+                    continue
+                if signal.type == 'buy':
+                    score += float(signal.strength or 0.0)
+                elif signal.type == 'sell':
+                    score -= float(signal.strength or 0.0)
+            except Exception:
+                continue
+        return score
 
     def _calculate_optimal_entry_price(self, symbol: str, action: str, position_side: str,
                                       market_data: Dict[str, Any], signal: Signal) -> Optional[float]:
