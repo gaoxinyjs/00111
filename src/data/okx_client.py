@@ -100,6 +100,20 @@ class OKXClient:
             return "OPTION"
         # 根据常见后缀推断失败时，默认使用SWAP（合约交易最常见）
         return "SWAP"
+    
+    def _extract_underlying(self, symbol: Optional[str]) -> Optional[str]:
+        """
+        根据合约ID提取基础交易对（例如 SOL-USDT-SWAP -> SOL-USDT）
+        """
+        if not symbol:
+            return None
+        parts = symbol.split('-')
+        if len(parts) <= 2:
+            return symbol
+        suffix = parts[-1].upper()
+        if suffix in {'SWAP', 'FUTURES', 'FUT', 'SPOT', 'MARGIN', 'OPTION', 'OPT'}:
+            return '-'.join(parts[:-1])
+        return symbol
 
     async def _async_init(self):
         """异步初始化（创建连接池和会话）"""
@@ -589,6 +603,62 @@ class OKXClient:
             'instId': symbol,
             'bar': interval,
             'limit': limit
+        }
+        return await self._request('GET', endpoint, params=params)
+    
+    async def async_get_trades(self, symbol: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        获取最近成交明细（异步版本）
+        """
+        endpoint = "/api/v5/market/trades"
+        params = {
+            'instId': symbol,
+            'limit': limit
+        }
+        return await self._request('GET', endpoint, params=params)
+    
+    async def async_get_funding_rate(self, symbol: str) -> List[Dict[str, Any]]:
+        """
+        获取永续合约资金费率
+        """
+        endpoint = "/api/v5/public/funding-rate"
+        params = {'instId': symbol}
+        return await self._request('GET', endpoint, params=params)
+    
+    async def async_get_open_interest(self, symbol: str) -> List[Dict[str, Any]]:
+        """
+        获取未平仓量
+        """
+        endpoint = "/api/v5/public/open-interest"
+        params = {
+            'instType': self._infer_inst_type(symbol),
+            'instId': symbol
+        }
+        return await self._request('GET', endpoint, params=params)
+    
+    async def async_get_taker_volume(self, symbol: str, period: str = '5m') -> List[Dict[str, Any]]:
+        """
+        获取主动买卖量（Taker Volume）
+        """
+        endpoint = "/api/v5/public/taker-volume"
+        underlying = self._extract_underlying(symbol)
+        params = {
+            'instType': self._infer_inst_type(symbol),
+            'uly': underlying,
+            'period': period
+        }
+        return await self._request('GET', endpoint, params=params)
+    
+    async def async_get_long_short_ratio(self, symbol: str, period: str = '5m') -> List[Dict[str, Any]]:
+        """
+        获取多空账户占比（Top Trader Sentiment）
+        """
+        endpoint = "/api/v5/public/account-ratio"
+        underlying = self._extract_underlying(symbol)
+        params = {
+            'instType': self._infer_inst_type(symbol),
+            'uly': underlying,
+            'period': period
         }
         return await self._request('GET', endpoint, params=params)
     

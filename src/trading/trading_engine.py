@@ -381,24 +381,122 @@ class TradingEngine:
             return None
         
         orderbook_data: Dict[str, Any] = {}
+        funding_data: Dict[str, Any] = {}
+        open_interest_data: Dict[str, Any] = {}
+        taker_volume_data: Dict[str, Any] = {}
+        long_short_ratio_data: Dict[str, Any] = {}
+        recent_trades: List[Dict[str, Any]] = []
+        orderflow_metrics: Dict[str, Any] = {}
+        
         try:
-            orderbook = await self.data_collector.collect_orderbook(symbol, 20)
-            if orderbook:
-                bids = orderbook.get('bids', [])
-                asks = orderbook.get('asks', [])
-                bid_volume = sum(float(bid[1]) for bid in bids if len(bid) >= 2)
-                ask_volume = sum(float(ask[1]) for ask in asks if len(ask) >= 2)
-                bid_ask_ratio = bid_volume / ask_volume if ask_volume > 0 else 1.0
-                orderbook_data = {
-                    'bids': bids,
-                    'asks': asks,
-                    'spread': orderbook.get('spread', 0),
-                    'bid_volume': bid_volume,
-                    'ask_volume': ask_volume,
-                    'bid_ask_ratio': bid_ask_ratio
+            (
+                orderbook_result,
+                funding_result,
+                oi_result,
+                taker_volume_result,
+                long_short_result,
+                trades_result
+            ) = await asyncio.gather(
+                self.data_collector.collect_orderbook(symbol, 20),
+                self.data_collector.collect_funding_rate(symbol),
+                self.data_collector.collect_open_interest(symbol),
+                self.data_collector.collect_taker_volume(symbol),
+                self.data_collector.collect_long_short_ratio(symbol),
+                self.data_collector.collect_recent_trades(symbol, 120),
+                return_exceptions=True
+            )
+        except Exception as gather_error:
+            self.logger.warning(f"{symbol}: 批量采集前瞻指标失败: {gather_error}", exc_info=True)
+            orderbook_result = funding_result = oi_result = taker_volume_result = long_short_result = trades_result = None
+        
+        if isinstance(orderbook_result, Exception):
+            self.logger.warning(f"{symbol}: 订单簿采集出错: {orderbook_result}")
+            orderbook_result = None
+        if isinstance(funding_result, Exception):
+            self.logger.warning(f"{symbol}: 资金费率采集出错: {funding_result}")
+            funding_result = None
+        if isinstance(oi_result, Exception):
+            self.logger.warning(f"{symbol}: 未平仓量采集出错: {oi_result}")
+            oi_result = None
+        if isinstance(taker_volume_result, Exception):
+            self.logger.warning(f"{symbol}: 主动买卖量采集出错: {taker_volume_result}")
+            taker_volume_result = None
+        if isinstance(long_short_result, Exception):
+            self.logger.warning(f"{symbol}: 多空账户占比采集出错: {long_short_result}")
+            long_short_result = None
+        if isinstance(trades_result, Exception):
+            self.logger.warning(f"{symbol}: 成交明细采集出错: {trades_result}")
+            trades_result = None
+        
+        orderbook = orderbook_result if isinstance(orderbook_result, dict) else None
+        if orderbook:
+            bids = orderbook.get('bids', [])
+            asks = orderbook.get('asks', [])
+            bid_volume = sum(float(bid[1]) for bid in bids if len(bid) >= 2)
+            ask_volume = sum(float(ask[1]) for ask in asks if len(ask) >= 2)
+            depth_levels = min(5, len(bids), len(asks))
+            near_bid_volume = sum(float(bids[i][1]) for i in range(depth_levels)) if depth_levels > 0 else bid_volume
+            near_ask_volume = sum(float(asks[i][1]) for i in range(depth_levels)) if depth_levels > 0 else ask_volume
+            bid_ask_ratio = bid_volume / ask_volume if ask_volume > 0 else 1.0
+            imbalance = (bid_volume - ask_volume) / (bid_volume + ask_volume) if (bid_volume + ask_volume) > 0 else 0
+            orderbook_data = {
+                'bids': bids,
+                'asks': asks,
+                'spread': orderbook.get('spread', 0),
+                'bid_volume': bid_volume,
+                'ask_volume': ask_volume,
+                'bid_ask_ratio': bid_ask_ratio,
+                'imbalance': imbalance,
+                'near_bid_volume': near_bid_volume,
+                'near_ask_volume': near_ask_volume,
+                'top_depth_levels': depth_levels
+            }
+        
+        if isinstance(funding_result, dict):
+            funding_data = funding_result
+        if isinstance(oi_result, dict):
+            open_interest_data = oi_result
+        if isinstance(taker_volume_result, dict):
+            taker_volume_data = taker_volume_result
+        if isinstance(long_short_result, dict):
+            long_short_ratio_data = long_short_result
+        if isinstance(trades_result, list):
+            recent_trades = trades_result
+        
+        if recent_trades:
+            buy_notional = sum(trade['notional'] for trade in recent_trades if trade.get('side') == 'buy')
+            sell_notional = sum(trade['notional'] for trade in recent_trades if trade.get('side') == 'sell')
+            total_notional = buy_notional + sell_notional
+            buy_volume = sum(trade['size'] for trade in recent_trades if trade.get('side') == 'buy')
+            sell_volume = sum(trade['size'] for trade in recent_trades if trade.get('side') == 'sell')
+            timestamps = [trade['ts'] for trade in recent_trades if trade.get('ts')]
+            if timestamps:
+                span_ms = max(timestamps) - min(timestamps) if len(timestamps) > 1 else 1000
+            else:
+                span_ms = 1000
+            trades_per_sec = len(recent_trades) / max(span_ms / 1000, 1)
+            avg_trade_size = (buy_volume + sell_volume) / len(recent_trades)
+            orderflow_metrics = {
+                'taker_buy_notional': buy_notional,
+                'taker_sell_notional': sell_notional,
+                'taker_buy_ratio': buy_notional / total_notional if total_notional > 0 else None,
+                'net_flow': buy_notional - sell_notional,
+                'buy_volume': buy_volume,
+                'sell_volume': sell_volume,
+                'avg_trade_size': avg_trade_size,
+                'trades_per_sec': trades_per_sec,
+                'sample_size': len(recent_trades),
+                'latest_trade': recent_trades[0] if recent_trades else None
+            }
+            if not taker_volume_data:
+                taker_volume_data = {
+                    'symbol': symbol,
+                    'period': 'recent_trades',
+                    'buy_vol': buy_volume,
+                    'sell_vol': sell_volume,
+                    'taker_buy_ratio': orderflow_metrics['taker_buy_ratio'],
+                    'timestamp': recent_trades[0].get('ts') if recent_trades else None
                 }
-        except Exception as e:
-            self.logger.warning(f"收集{symbol}订单簿数据失败: {e}")
         
         kline = kline_15m
         indicators_dict: Dict[str, Any] = {}
@@ -450,6 +548,28 @@ class TradingEngine:
                 price_change_10 = ((recent_10['close'].iloc[-1] - recent_10['close'].iloc[0]) / recent_10['close'].iloc[0] * 100) if recent_10['close'].iloc[0] > 0 else 0
                 detailed_indicators['price_change_10k'] = price_change_10
         
+        primary_taker_ratio = orderflow_metrics.get('taker_buy_ratio')
+        if primary_taker_ratio is None:
+            primary_taker_ratio = taker_volume_data.get('taker_buy_ratio')
+        
+        sentiment_label = None
+        if primary_taker_ratio is not None:
+            if primary_taker_ratio > 0.6:
+                sentiment_label = 'strong_buy_flow'
+            elif primary_taker_ratio < 0.4:
+                sentiment_label = 'strong_sell_flow'
+            else:
+                sentiment_label = 'neutral_flow'
+        
+        sentiment_data = {
+            'funding_rate': funding_data.get('current_rate'),
+            'next_funding_rate': funding_data.get('next_rate'),
+            'taker_buy_ratio': primary_taker_ratio,
+            'orderbook_imbalance': orderbook_data.get('imbalance') if orderbook_data else None,
+            'long_short_ratio': long_short_ratio_data.get('long_short_ratio'),
+            'label': sentiment_label
+        }
+        
         symbol_market_data = {
             'symbol': symbol,
             'price': ticker.get('price', 0),
@@ -463,9 +583,15 @@ class TradingEngine:
             'kline': kline,
             'indicators': detailed_indicators,
             'orderbook': orderbook_data,
-            'funding': {},
+            'funding': funding_data,
+            'derivatives': {
+                'open_interest': open_interest_data,
+                'taker_volume': taker_volume_data,
+                'long_short_ratio': long_short_ratio_data
+            },
+            'orderflow': orderflow_metrics,
             'chain': {},
-            'sentiment': {},
+            'sentiment': sentiment_data,
             'pair_config': self.pair_config_map.get(symbol, {})
         }
         return symbol_market_data

@@ -168,9 +168,14 @@ class DeepSeekClient:
         
         # 准备数据，避免在f-string中使用{}导致的语法问题
         empty_dict = {}
-        funding_data = market_data.get('funding', empty_dict)
-        chain_data = market_data.get('chain', empty_dict)
-        sentiment_data = market_data.get('sentiment', empty_dict)
+        funding_data = market_data.get('funding', empty_dict) or {}
+        derivatives_data = market_data.get('derivatives', empty_dict) or {}
+        orderflow_data = market_data.get('orderflow', empty_dict) or {}
+        chain_data = market_data.get('chain', empty_dict) or {}
+        sentiment_data = market_data.get('sentiment', empty_dict) or {}
+        open_interest_data = derivatives_data.get('open_interest', {}) or {}
+        taker_volume_data = derivatives_data.get('taker_volume', {}) or {}
+        long_short_data = derivatives_data.get('long_short_ratio', {}) or {}
         
         # 序列化数据
         funding_json = json.dumps(self._serialize_for_json(funding_data), indent=2, ensure_ascii=False)
@@ -229,6 +234,15 @@ class DeepSeekClient:
             except Exception:
                 return str(default)
         
+        def format_percent(value: Any, precision: int = 2, scale: float = 100.0, default: str = 'N/A') -> str:
+            """将数值格式化为百分比字符串"""
+            try:
+                if value is None:
+                    return default
+                return f"{float(value) * scale:.{precision}f}%"
+            except (ValueError, TypeError):
+                return str(value) if value is not None else default
+        
         # 提取所有market_data中的值
         symbol_str = safe_get_str(market_data, 'symbol', 'UNKNOWN')
         price_str = safe_get_str(market_data, 'price', 'N/A')
@@ -264,6 +278,21 @@ class DeepSeekClient:
         momentum_str = safe_get_str(indicators, 'momentum', 'N/A')
         price_change_str = safe_get_str(indicators, 'price_change', 'N/A')
         volatility_str = safe_get_str(indicators, 'volatility', 'N/A')
+        
+        # 前瞻指标字符串
+        funding_current_str = format_percent(funding_data.get('current_rate'))
+        funding_next_str = format_percent(funding_data.get('next_rate'))
+        funding_time_str = safe_get_str(funding_data, 'funding_time', 'N/A')
+        next_funding_time_str = safe_get_str(funding_data, 'next_funding_time', 'N/A')
+        oi_amount_str = safe_get_str(open_interest_data, 'amount', 'N/A')
+        oi_ccy_str = safe_get_str(open_interest_data, 'amount_ccy', 'N/A')
+        taker_buy_ratio_str = format_percent(orderflow_data.get('taker_buy_ratio', taker_volume_data.get('taker_buy_ratio')))
+        net_flow_str = safe_get_str(orderflow_data, 'net_flow', 'N/A')
+        trades_per_sec_str = safe_get_str(orderflow_data, 'trades_per_sec', 'N/A')
+        orderbook_imbalance_str = format_percent(orderbook_data.get('imbalance'))
+        near_depth_str = f"{safe_get_str(orderbook_data, 'near_bid_volume', 'N/A')} / {safe_get_str(orderbook_data, 'near_ask_volume', 'N/A')}"
+        long_short_ratio_str = safe_get_str(long_short_data, 'long_short_ratio', 'N/A')
+        sentiment_label_str = safe_get_str(sentiment_data, 'label', 'N/A')
         
         # 提取所有technical_analysis中的值
         macd_signal_analysis_str = safe_get_str(technical_analysis, 'macd_signal', 'N/A')
@@ -328,6 +357,13 @@ class DeepSeekClient:
 **24小时成交量**: {volume_24h_str}
 **当前趋势**: {overall_trend_str} | 趋势强度: {trend_strength_str}
 
+ ## 🔮 前瞻性指标（必须优先分析）
+ - **资金费率**: 当前 {funding_current_str} | 下次 {funding_next_str} | 时间 {funding_time_str} -> {next_funding_time_str}
+ - **未平仓量**: 合约张数 {oi_amount_str} | 币本位 {oi_ccy_str}
+ - **主动成交/订单流**: 买方占比 {taker_buy_ratio_str} | 净流入 {net_flow_str} | 每秒成交 {trades_per_sec_str}
+ - **订单簿**: 近端深度 (Bid/Ask) {near_depth_str} | 不平衡 {orderbook_imbalance_str} | 做市商分析: {market_maker_analysis}
+ - **多空账户情绪**: Long/Short 比 {long_short_ratio_str} | 系统情绪标签: {sentiment_label_str}
+ 
 ## 📈 技术指标分析（滞后指标，用于确认前瞻性信号）
 
 **⚠️ 重要提示**：技术指标是滞后指标，主要用于确认前瞻性指标的信号强弱。如果前瞻性指标和技术指标方向相反，**必须以前瞻性指标为主**。
