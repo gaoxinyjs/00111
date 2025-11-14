@@ -137,6 +137,11 @@ trading_optimization:
   # 交易频率控制（针对15分钟K线优化）
   min_trade_interval: 900  # 最小交易间隔（秒）- 15分钟（针对15分钟K线）
   max_loss_streak: 3  # 最大连续亏损次数，超过后暂停交易（放宽到3次）
+  
+  orderflow_analysis:
+    impact_notional: 50000  # 测算冲击成本的基准USDT规模
+    block_trade_notional: 80000  # 判定大单的名义金额
+    block_trade_window_sec: 180  # 判定大单聚集的时间窗口
 
 # 信号评分配置
 signal_scoring:

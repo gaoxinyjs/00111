@@ -37,6 +37,9 @@ class DataCollector:
         self.taker_volume_cache: Dict[str, Dict] = {}
         self.long_short_cache: Dict[str, Dict] = {}
         self.trade_cache: Dict[str, List] = {}
+        self.mark_price_cache: Dict[str, Dict] = {}
+        self.index_price_cache: Dict[str, Dict] = {}
+        self.liquidation_cache: Dict[str, Dict] = {}
         
         # 回调函数
         self.callbacks: Dict[str, List[Callable]] = {
@@ -281,6 +284,106 @@ class DataCollector:
         except Exception as e:
             self.logger.warning(f"采集{symbol}多空账户占比失败: {e}")
         return self.long_short_cache.get(symbol, {})
+    
+    async def collect_mark_price(self, symbol: str) -> Dict[str, Any]:
+        """采集标记价格"""
+        try:
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
+            mark_data = await self.okx_client.async_get_mark_price(symbol)
+            if mark_data and isinstance(mark_data, list):
+                entry = mark_data[0]
+                processed = {
+                    'symbol': symbol,
+                    'mark_price': float(entry.get('markPx', 0) or 0),
+                    'index_price': float(entry.get('indexPx', 0) or 0),
+                    'last': float(entry.get('last', 0) or 0),
+                    'timestamp': entry.get('ts')
+                }
+                self.mark_price_cache[symbol] = processed
+                return processed
+        except Exception as e:
+            self.logger.warning(f"采集{symbol}标记价格失败: {e}")
+        return self.mark_price_cache.get(symbol, {})
+    
+    async def collect_index_price(self, symbol: str) -> Dict[str, Any]:
+        """采集指数价格"""
+        try:
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
+            underlying = self.okx_client._extract_underlying(symbol)
+            index_data = await self.okx_client.async_get_index_ticker(underlying)
+            if index_data and isinstance(index_data, list):
+                entry = index_data[0]
+                processed = {
+                    'symbol': underlying,
+                    'index_price': float(entry.get('idxPx', 0) or 0),
+                    'open_price': float(entry.get('open24h', 0) or 0),
+                    'high_price': float(entry.get('high24h', 0) or 0),
+                    'low_price': float(entry.get('low24h', 0) or 0),
+                    'timestamp': entry.get('ts')
+                }
+                self.index_price_cache[symbol] = processed
+                return processed
+        except Exception as e:
+            self.logger.warning(f"采集{symbol}指数价格失败: {e}")
+        return self.index_price_cache.get(symbol, {})
+    
+    async def collect_liquidations(self, symbol: str, limit: int = 100) -> Dict[str, Any]:
+        """采集强平订单摘要"""
+        try:
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
+            liq_data = await self.okx_client.async_get_liquidation_orders(symbol, limit=limit)
+            long_total = 0.0
+            short_total = 0.0
+            largest = None
+            latest_ts = None
+            if liq_data and isinstance(liq_data, list):
+                for order in liq_data:
+                    try:
+                        price = float(order.get('fillPx', 0) or 0)
+                        size = abs(float(order.get('fillSz', 0) or 0))
+                        notional = price * size
+                    except Exception:
+                        continue
+                    pos_side = (order.get('posSide') or order.get('side') or '').lower()
+                    if pos_side == 'long':
+                        long_total += notional
+                    elif pos_side == 'short':
+                        short_total += notional
+                    else:
+                        # 无法判断时根据订单方向推断
+                        side = (order.get('side') or '').lower()
+                        if side == 'buy':
+                            short_total += notional
+                        elif side == 'sell':
+                            long_total += notional
+                        else:
+                            short_total += notional
+                    if not largest or notional > largest.get('notional', 0):
+                        largest = {
+                            'notional': notional,
+                            'side': pos_side or order.get('side'),
+                            'price': price,
+                            'timestamp': order.get('fillTime')
+                        }
+                    ts = order.get('fillTime')
+                    if ts and (latest_ts is None or ts > latest_ts):
+                        latest_ts = ts
+                summary = {
+                    'symbol': symbol,
+                    'long_volume': long_total,
+                    'short_volume': short_total,
+                    'net_volume': long_total - short_total,
+                    'largest_liquidation': largest,
+                    'last_update': latest_ts
+                }
+                self.liquidation_cache[symbol] = summary
+                return summary
+        except Exception as e:
+            self.logger.warning(f"采集{symbol}强平订单失败: {e}")
+        return self.liquidation_cache.get(symbol, {})
     
     async def collect_recent_trades(self, symbol: str, limit: int = 120) -> List[Dict[str, Any]]:
         """采集最近成交明细"""

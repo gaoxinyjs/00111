@@ -171,11 +171,15 @@ class DeepSeekClient:
         funding_data = market_data.get('funding', empty_dict) or {}
         derivatives_data = market_data.get('derivatives', empty_dict) or {}
         orderflow_data = market_data.get('orderflow', empty_dict) or {}
+        impact_data = market_data.get('impact', empty_dict) or {}
         chain_data = market_data.get('chain', empty_dict) or {}
         sentiment_data = market_data.get('sentiment', empty_dict) or {}
+        macro_data = market_data.get('macro', empty_dict) or {}
         open_interest_data = derivatives_data.get('open_interest', {}) or {}
         taker_volume_data = derivatives_data.get('taker_volume', {}) or {}
         long_short_data = derivatives_data.get('long_short_ratio', {}) or {}
+        liquidation_data = derivatives_data.get('liquidations', {}) or {}
+        basis_data = derivatives_data.get('basis', {}) or {}
         
         # 序列化数据
         funding_json = json.dumps(self._serialize_for_json(funding_data), indent=2, ensure_ascii=False)
@@ -293,6 +297,24 @@ class DeepSeekClient:
         near_depth_str = f"{safe_get_str(orderbook_data, 'near_bid_volume', 'N/A')} / {safe_get_str(orderbook_data, 'near_ask_volume', 'N/A')}"
         long_short_ratio_str = safe_get_str(long_short_data, 'long_short_ratio', 'N/A')
         sentiment_label_str = safe_get_str(sentiment_data, 'label', 'N/A')
+        liquidation_long_str = safe_get_str(liquidation_data, 'long_volume', 'N/A')
+        liquidation_short_str = safe_get_str(liquidation_data, 'short_volume', 'N/A')
+        liquidation_max_str = safe_get_str(liquidation_data.get('largest_liquidation', {}), 'notional', 'N/A')
+        basis_spot_str = format_percent(basis_data.get('spot_basis_pct'))
+        basis_mark_str = format_percent(basis_data.get('mark_basis_pct'))
+        funding_annualized_str = format_percent(basis_data.get('funding_annualized_pct'))
+        premium_pct_str = format_percent(basis_data.get('premium_pct'))
+        impact_notional_str = safe_get_str(impact_data, 'impact_notional', 'N/A')
+        impact_buy_pct_str = format_percent((impact_data.get('buy') or {}).get('impact_pct'))
+        impact_sell_pct_str = format_percent((impact_data.get('sell') or {}).get('impact_pct'))
+        block_data = orderflow_data.get('block_trades', {}) or {}
+        block_count_str = safe_get_str(block_data, 'count', '0')
+        block_bias_str = safe_get_str(block_data, 'bias', 'neutral')
+        block_net_notional_str = safe_get_str(block_data, 'net_notional', '0')
+        macro_risk_label_str = safe_get_str(macro_data, 'risk_level', 'normal')
+        macro_events_summary = ', '.join(
+            event.get('name', '') for event in macro_data.get('active_events', []) or []
+        ) or '无'
         
         # 提取所有technical_analysis中的值
         macd_signal_analysis_str = safe_get_str(technical_analysis, 'macd_signal', 'N/A')
@@ -363,6 +385,11 @@ class DeepSeekClient:
  - **主动成交/订单流**: 买方占比 {taker_buy_ratio_str} | 净流入 {net_flow_str} | 每秒成交 {trades_per_sec_str}
  - **订单簿**: 近端深度 (Bid/Ask) {near_depth_str} | 不平衡 {orderbook_imbalance_str} | 做市商分析: {market_maker_analysis}
  - **多空账户情绪**: Long/Short 比 {long_short_ratio_str} | 系统情绪标签: {sentiment_label_str}
+ - **强平压力**: 多头 {liquidation_long_str} / 空头 {liquidation_short_str} | 最大单笔 {liquidation_max_str}
+ - **价差/拥挤度**: 永续-指数 {basis_spot_str} | Mark {basis_mark_str} | Premium {premium_pct_str} | 资金年化 {funding_annualized_str}
+ - **冲击成本**: 吃掉 {impact_notional_str} USDT -> 买侧冲击 {impact_buy_pct_str} / 卖侧 {impact_sell_pct_str}
+ - **区块大单**: {block_count_str} 笔 | 偏向 {block_bias_str} | 净流 {block_net_notional_str}
+ - **宏观风险**: 当前级别 {macro_risk_label_str} | 活跃事件: {macro_events_summary}
  
 ## 📈 技术指标分析（滞后指标，用于确认前瞻性信号）
 

@@ -617,6 +617,38 @@ class OKXClient:
         }
         return await self._request('GET', endpoint, params=params)
     
+    async def async_get_mark_price(self, symbol: str) -> List[Dict[str, Any]]:
+        """
+        获取标记价格信息
+        """
+        endpoint = "/api/v5/public/mark-price"
+        params = {
+            'instType': self._infer_inst_type(symbol),
+            'instId': symbol
+        }
+        return await self._request('GET', endpoint, params=params)
+    
+    async def async_get_index_ticker(self, symbol: str) -> List[Dict[str, Any]]:
+        """
+        获取指数价格（用于计算基差）
+        """
+        endpoint = "/api/v5/market/index-tickers"
+        params = {'instId': symbol}
+        return await self._request('GET', endpoint, params=params)
+    
+    async def async_get_liquidation_orders(self, symbol: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        获取强平订单（已成交）
+        """
+        endpoint = "/api/v5/public/liquidation-orders"
+        params = {
+            'instType': self._infer_inst_type(symbol),
+            'instId': symbol,
+            'state': 'filled',
+            'limit': limit
+        }
+        return await self._request('GET', endpoint, params=params)
+    
     async def async_get_funding_rate(self, symbol: str) -> List[Dict[str, Any]]:
         """
         获取永续合约资金费率

@@ -7,7 +7,7 @@
 import asyncio
 from copy import deepcopy
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
 from ..data.data_collector import DataCollector
@@ -39,6 +39,8 @@ class TradingEngine:
             for pair in trading_pairs_cfg
             if pair.get('symbol')
         }
+        self.orderflow_analysis_cfg = self.config_mgr.get_config('trading', 'orderflow_analysis', {}) or {}
+        self.macro_events_cfg = self.config_mgr.get_config('risk', 'macro_events', {}) or {}
         self.data_collector = DataCollector()
         self.data_processor = DataProcessor()
         self.signal_generator = SignalGenerator()
@@ -395,7 +397,10 @@ class TradingEngine:
                 oi_result,
                 taker_volume_result,
                 long_short_result,
-                trades_result
+                trades_result,
+                mark_price_result,
+                index_price_result,
+                liquidation_result
             ) = await asyncio.gather(
                 self.data_collector.collect_orderbook(symbol, 20),
                 self.data_collector.collect_funding_rate(symbol),
@@ -403,6 +408,9 @@ class TradingEngine:
                 self.data_collector.collect_taker_volume(symbol),
                 self.data_collector.collect_long_short_ratio(symbol),
                 self.data_collector.collect_recent_trades(symbol, 120),
+                self.data_collector.collect_mark_price(symbol),
+                self.data_collector.collect_index_price(symbol),
+                self.data_collector.collect_liquidations(symbol),
                 return_exceptions=True
             )
         except Exception as gather_error:
@@ -427,6 +435,15 @@ class TradingEngine:
         if isinstance(trades_result, Exception):
             self.logger.warning(f"{symbol}: 成交明细采集出错: {trades_result}")
             trades_result = None
+        if isinstance(mark_price_result, Exception):
+            self.logger.warning(f"{symbol}: 标记价格采集出错: {mark_price_result}")
+            mark_price_result = None
+        if isinstance(index_price_result, Exception):
+            self.logger.warning(f"{symbol}: 指数价格采集出错: {index_price_result}")
+            index_price_result = None
+        if isinstance(liquidation_result, Exception):
+            self.logger.warning(f"{symbol}: 强平订单采集出错: {liquidation_result}")
+            liquidation_result = None
         
         orderbook = orderbook_result if isinstance(orderbook_result, dict) else None
         if orderbook:
@@ -463,6 +480,11 @@ class TradingEngine:
         if isinstance(trades_result, list):
             recent_trades = trades_result
         
+        impact_metrics: Dict[str, Any] = {}
+        block_trades_summary: Dict[str, Any] = {}
+        basis_data: Dict[str, Any] = {}
+        liquidation_data: Dict[str, Any] = {}
+        
         if recent_trades:
             buy_notional = sum(trade['notional'] for trade in recent_trades if trade.get('side') == 'buy')
             sell_notional = sum(trade['notional'] for trade in recent_trades if trade.get('side') == 'sell')
@@ -497,6 +519,47 @@ class TradingEngine:
                     'taker_buy_ratio': orderflow_metrics['taker_buy_ratio'],
                     'timestamp': recent_trades[0].get('ts') if recent_trades else None
                 }
+            block_threshold = float(self.orderflow_analysis_cfg.get('block_trade_notional', 80000) or 0)
+            block_window = int(self.orderflow_analysis_cfg.get('block_trade_window_sec', 180) or 0)
+            block_trades_summary = self._summarize_block_trades(recent_trades, block_threshold, block_window)
+            if block_trades_summary:
+                orderflow_metrics['block_trades'] = block_trades_summary
+        
+        mid_price = float(ticker.get('price', 0) or 0)
+        impact_notional = float(self.orderflow_analysis_cfg.get('impact_notional', 50000) or 0)
+        if orderbook_data and impact_notional > 0 and mid_price > 0:
+            impact_metrics = self._calculate_market_impact(orderbook_data, impact_notional, mid_price)
+        
+        mark_price = None
+        if isinstance(mark_price_result, dict) and mark_price_result:
+            mark_price = float(mark_price_result.get('mark_price', 0) or 0)
+        index_price = None
+        if isinstance(index_price_result, dict) and index_price_result:
+            index_price = float(index_price_result.get('index_price', 0) or 0)
+        if (mark_price and mark_price > 0) or (index_price and index_price > 0):
+            spot_basis_pct = ((mid_price - index_price) / index_price) if index_price and index_price > 0 else None
+            mark_basis_pct = ((mark_price - index_price) / index_price) if index_price and index_price > 0 and mark_price else None
+            premium_pct = ((mid_price - mark_price) / mark_price) if mark_price else None
+            basis_data = {
+                'mark_price': mark_price,
+                'index_price': index_price,
+                'spot_basis_pct': spot_basis_pct,
+                'mark_basis_pct': mark_basis_pct,
+                'premium_pct': premium_pct,
+                'timestamp': (mark_price_result or {}).get('timestamp') or (index_price_result or {}).get('timestamp')
+            }
+            current_rate = funding_data.get('current_rate') if isinstance(funding_data, dict) else None
+            if current_rate is not None:
+                try:
+                    annualized = float(current_rate) * 3 * 365  # 8小时=3次/天
+                    basis_data['funding_annualized_pct'] = annualized
+                except (TypeError, ValueError):
+                    pass
+        
+        if isinstance(liquidation_result, dict):
+            liquidation_data = liquidation_result
+        
+        macro_risk = self._evaluate_macro_risk(symbol)
         
         kline = kline_15m
         indicators_dict: Dict[str, Any] = {}
@@ -567,6 +630,8 @@ class TradingEngine:
             'taker_buy_ratio': primary_taker_ratio,
             'orderbook_imbalance': orderbook_data.get('imbalance') if orderbook_data else None,
             'long_short_ratio': long_short_ratio_data.get('long_short_ratio'),
+            'macro_risk': macro_risk.get('risk_level'),
+            'block_trades': block_trades_summary,
             'label': sentiment_label
         }
         
@@ -583,18 +648,167 @@ class TradingEngine:
             'kline': kline,
             'indicators': detailed_indicators,
             'orderbook': orderbook_data,
+            'impact': impact_metrics,
             'funding': funding_data,
             'derivatives': {
                 'open_interest': open_interest_data,
                 'taker_volume': taker_volume_data,
-                'long_short_ratio': long_short_ratio_data
+                'long_short_ratio': long_short_ratio_data,
+                'liquidations': liquidation_data,
+                'basis': basis_data
             },
             'orderflow': orderflow_metrics,
             'chain': {},
             'sentiment': sentiment_data,
+            'macro': macro_risk,
             'pair_config': self.pair_config_map.get(symbol, {})
         }
         return symbol_market_data
+    
+    def _calculate_market_impact(self, orderbook: Dict[str, Any], target_notional: float, mid_price: float) -> Dict[str, Any]:
+        """估算吃掉指定名义金额时的冲击成本"""
+        def _calc(levels: List[List[float]], direction: str) -> Dict[str, Any]:
+            remaining = target_notional
+            total_notional = 0.0
+            total_qty = 0.0
+            worst_price = mid_price
+            for level in levels:
+                if len(level) < 2:
+                    continue
+                price = float(level[0])
+                size = abs(float(level[1]))
+                level_notional = price * size
+                if level_notional <= 0:
+                    continue
+                take = min(level_notional, remaining)
+                if take <= 0:
+                    break
+                worst_price = price
+                total_notional += take
+                total_qty += take / price if price > 0 else 0
+                remaining -= take
+                if remaining <= 0:
+                    break
+            filled_ratio = total_notional / target_notional if target_notional > 0 else 0
+            impact_pct = None
+            if total_notional > 0 and mid_price > 0:
+                move_pct = (worst_price - mid_price) / mid_price
+                impact_pct = move_pct if direction == 'buy' else -move_pct
+            return {
+                'filled_ratio': filled_ratio,
+                'worst_price': worst_price if total_notional > 0 else None,
+                'avg_price': (total_notional / total_qty) if total_qty > 0 else None,
+                'impact_pct': impact_pct
+            }
+        
+        bids = orderbook.get('bids', []) if orderbook else []
+        asks = orderbook.get('asks', []) if orderbook else []
+        return {
+            'impact_notional': target_notional,
+            'buy': _calc(asks, 'buy'),
+            'sell': _calc(bids, 'sell')
+        }
+    
+    def _summarize_block_trades(self, trades: List[Dict[str, Any]], threshold: float, window_sec: int) -> Dict[str, Any]:
+        """统计大额成交簇"""
+        if not trades or threshold <= 0:
+            return {}
+        block_trades = [trade for trade in trades if trade.get('notional', 0) >= threshold]
+        if not block_trades:
+            return {}
+        sorted_blocks = sorted(block_trades, key=lambda t: t.get('ts', 0) or 0, reverse=True)
+        latest_ts = sorted_blocks[0].get('ts')
+        window_ms = window_sec * 1000 if window_sec else None
+        if window_ms and latest_ts:
+            window_blocks = [
+                trade for trade in sorted_blocks
+                if trade.get('ts') and (latest_ts - trade['ts']) <= window_ms
+            ]
+        else:
+            window_blocks = sorted_blocks
+        buy_count = sum(1 for trade in window_blocks if trade.get('side') == 'buy')
+        sell_count = sum(1 for trade in window_blocks if trade.get('side') == 'sell')
+        net_notional = 0.0
+        for trade in window_blocks:
+            notional = trade.get('notional', 0.0)
+            if trade.get('side') == 'buy':
+                net_notional += notional
+            elif trade.get('side') == 'sell':
+                net_notional -= notional
+        latest_trade = sorted_blocks[0]
+        bias = 'buy' if net_notional > 0 else 'sell' if net_notional < 0 else 'neutral'
+        return {
+            'count': len(window_blocks),
+            'buy_count': buy_count,
+            'sell_count': sell_count,
+            'net_notional': net_notional,
+            'last_trade': latest_trade,
+            'bias': bias,
+            'threshold': threshold
+        }
+    
+    def _parse_iso_datetime(self, value: Optional[Any]) -> Optional[datetime]:
+        """解析ISO或毫秒时间戳"""
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            try:
+                return datetime.fromtimestamp(float(value) / 1000.0, tz=timezone.utc)
+            except (TypeError, ValueError, OSError):
+                return None
+        if isinstance(value, str):
+            try:
+                if value.endswith('Z'):
+                    value = value.replace('Z', '+00:00')
+                parsed = datetime.fromisoformat(value)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                return parsed.astimezone(timezone.utc)
+            except ValueError:
+                return None
+        return None
+    
+    def _evaluate_macro_risk(self, symbol: str) -> Dict[str, Any]:
+        """基于配置计算当前宏观风险"""
+        macro_cfg = self.macro_events_cfg or self.config_mgr.get_config('risk', 'macro_events', {})
+        if not macro_cfg or not macro_cfg.get('enabled', True):
+            return {'risk_level': 'normal', 'active_events': []}
+        now = datetime.now(timezone.utc)
+        events = macro_cfg.get('events', []) or []
+        risk_levels = macro_cfg.get('risk_levels', {}) or {}
+        default_level = macro_cfg.get('default_level', 'normal')
+        highest_level = default_level
+        active_events: List[Dict[str, Any]] = []
+        cumulative_score = risk_levels.get(default_level, 0.0)
+        
+        for event in events:
+            start = self._parse_iso_datetime(event.get('start'))
+            end = self._parse_iso_datetime(event.get('end'))
+            if start and now < start:
+                continue
+            if end and now > end:
+                continue
+            symbols = event.get('symbols')
+            if symbols and symbol not in symbols:
+                continue
+            level = (event.get('level') or 'medium').lower()
+            active_events.append({
+                'name': event.get('name'),
+                'level': level,
+                'note': event.get('note'),
+                'start': event.get('start'),
+                'end': event.get('end')
+            })
+            cumulative_score += risk_levels.get(level, 0.0)
+            if risk_levels.get(level, 0.0) >= risk_levels.get(highest_level, 0.0):
+                highest_level = level
+        
+        return {
+            'risk_level': highest_level,
+            'score': cumulative_score,
+            'active_events': active_events,
+            'evaluated_at': now.isoformat()
+        }
     
     async def _generate_signals(self, market_data: Dict[str, Dict[str, Any]]) -> List:
         """
