@@ -67,6 +67,17 @@ class DecisionEngine:
         """初始化决策引擎"""
         self.config_mgr = get_config_manager()
         self.logger = get_logger("decision_engine")
+        trading_pairs_cfg = self.config_mgr.get_config('trading', 'trading_pairs') or []
+        self.pair_config_map = {
+            pair.get('symbol'): pair
+            for pair in trading_pairs_cfg
+            if pair.get('symbol')
+        }
+        self.default_fallback_multipliers = {
+            'ai_hold': 0.6,
+            'ai_no_direction': 0.5,
+            'ai_low_confidence': 0.4
+        }
         self.signal_generator = SignalGenerator()
         self.position_calculator = PositionCalculator()
         self.risk_evaluator = RiskEvaluator()
@@ -174,6 +185,15 @@ class DecisionEngine:
         
         return stop_loss_price, take_profit_price
     
+    def _get_pair_config(self, symbol: str) -> Dict[str, Any]:
+        return self.pair_config_map.get(symbol, {})
+    
+    def _get_fallback_multiplier(self, symbol: str, reason: str) -> float:
+        pair_cfg = self._get_pair_config(symbol)
+        multipliers = pair_cfg.get('fallback_multipliers', {}) or {}
+        fallback_multiplier = multipliers.get(reason, self.default_fallback_multipliers.get(reason, 0.5))
+        return max(0.1, min(fallback_multiplier, 1.0))
+    
     def make_decision(self, symbol: str, market_data: Dict[str, Any], 
                      current_position: Optional[Dict[str, Any]] = None) -> Optional[TradingDecision]:
         """
@@ -243,6 +263,7 @@ class DecisionEngine:
                 return None
             
             # 1. 生成信号
+            pair_cfg = self._get_pair_config(symbol)
             signals = self.signal_generator.generate_signals(symbol, market_data)
             multi_timeframe = (market_data.get('multi_timeframe') or {})
             entry_direction = multi_timeframe.get('entry_direction', 'neutral')
@@ -258,7 +279,8 @@ class DecisionEngine:
             deepseek_confidence = 0.0
             analysis: Dict[str, Any] = {}
             auto_trading_cfg = self.config_mgr.get_config('trading', 'auto_trading', {})
-            min_confidence_cfg = auto_trading_cfg.get('min_confidence', 0.3)
+            pair_min_conf = pair_cfg.get('min_confidence')
+            min_confidence_cfg = pair_min_conf if pair_min_conf is not None else auto_trading_cfg.get('min_confidence', 0.3)
             
             # 查找DeepSeek信号
             for signal in signals:
@@ -469,6 +491,12 @@ class DecisionEngine:
                 position_size = self.position_calculator.calculate_position(
                     temp_signal, market_data, current_position
                 )
+                if fallback_to_internal and fallback_reason:
+                    fallback_multiplier = self._get_fallback_multiplier(symbol, fallback_reason)
+                    position_size *= fallback_multiplier
+                    self.logger.info(
+                        f"{symbol}: 降级模式({fallback_reason})，仓位按 {fallback_multiplier:.2f} 倍缩放 -> {position_size:.2%}"
+                    )
                 
                 if position_size <= 0:
                     self.logger.warning(f"{symbol}: DeepSeek要求{action}，但计算仓位为0，跳过")

@@ -105,6 +105,28 @@ class PositionCalculator:
             if signal.type == 'hold' or signal.strength <= 0:
                 return 0.0
             
+            pair_cfg = (market_data or {}).get('pair_config', {}) or {}
+            pair_position_cfg = pair_cfg.get('position', {}) or {}
+            base_position_pct = pair_position_cfg.get(
+                'base',
+                pair_cfg.get('base_position_size', self.base_position_size)
+            )
+            max_position_pct = pair_position_cfg.get(
+                'max',
+                pair_cfg.get('max_position_size', self.max_position_size)
+            )
+            min_position_pct = pair_position_cfg.get(
+                'min',
+                pair_cfg.get('min_position_size', self.min_position_size)
+            )
+            max_total_position_pct = pair_position_cfg.get(
+                'max_total',
+                pair_cfg.get('max_total_position', self.max_total_position)
+            )
+            fixed_usdt_base = pair_cfg.get('fixed_usdt_per_trade', self.fixed_usdt_per_trade)
+            min_usdt = pair_cfg.get('min_usdt_per_trade', self.min_usdt_per_trade)
+            max_usdt = pair_cfg.get('max_usdt_per_trade', self.max_usdt_per_trade)
+            
             # 计算所有调整因子
             confidence_coeff = self._calculate_confidence_coeff(signal, market_data)
             signal_strength_coeff = self._calculate_signal_strength_coeff(signal)
@@ -116,7 +138,7 @@ class PositionCalculator:
             # 根据模式计算仓位
             if self.position_mode == 'fixed_usdt':
                 # 固定USDT模式
-                base_usdt = self.fixed_usdt_per_trade
+                base_usdt = fixed_usdt_base
                 final_usdt = (
                     base_usdt *
                     confidence_coeff *
@@ -128,7 +150,7 @@ class PositionCalculator:
                 )
                 
                 # 应用限制
-                final_usdt = max(self.min_usdt_per_trade, min(final_usdt, self.max_usdt_per_trade))
+                final_usdt = max(min_usdt, min(final_usdt, max_usdt))
                 
                 self.logger.info(
                     f"💰 [仓位计算-固定USDT] {signal.symbol}: "
@@ -168,8 +190,8 @@ class PositionCalculator:
                         # 转换为仓位比例
                         position_ratio = final_usdt / available_balance
                         # 应用比例限制
-                        position_ratio = min(position_ratio, self.max_position_size)
-                        position_ratio = max(position_ratio, self.min_position_size)
+                        position_ratio = min(position_ratio, max_position_pct)
+                        position_ratio = max(position_ratio, min_position_pct)
                         
                         self.logger.debug(
                             f"💰 [固定USDT转比例] {signal.symbol}: "
@@ -185,8 +207,8 @@ class PositionCalculator:
                 # 假设账户余额10000 USDT，计算比例
                 default_balance = 10000
                 position_ratio = final_usdt / default_balance
-                position_ratio = min(position_ratio, self.max_position_size)
-                position_ratio = max(position_ratio, self.min_position_size)
+                position_ratio = min(position_ratio, max_position_pct)
+                position_ratio = max(position_ratio, min_position_pct)
                 
                 self.logger.debug(
                     f"💰 [固定USDT转比例-默认] {signal.symbol}: "
@@ -198,7 +220,7 @@ class PositionCalculator:
             
             else:
                 # 比例模式
-                base_position = self.base_position_size
+                base_position = base_position_pct
                 final_position = (
                     base_position *
                     confidence_coeff *
@@ -210,8 +232,8 @@ class PositionCalculator:
                 )
                 
                 # 应用限制
-                final_position = min(final_position, self.max_position_size)
-                final_position = max(self.min_position_size, final_position)
+                final_position = min(final_position, max_position_pct)
+                final_position = max(min_position_pct, final_position)
                 
                 self.logger.info(
                     f"💰 [仓位计算-比例模式] {signal.symbol}: "

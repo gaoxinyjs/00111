@@ -8,6 +8,32 @@ trading_pairs:
     size_precision: 2  # SOL数量精度
     leverage: 5  # 杠杆倍数（1-125）- 调低到5倍以降低噪声放大
     max_position: 1.0  # 最大持仓（1倍合约面值）
+    min_confidence: 0.6
+    position:
+      base: 0.05
+      max: 0.12
+      min: 0.01
+    fallback_multipliers:
+      ai_hold: 0.6
+      ai_no_direction: 0.5
+      ai_low_confidence: 0.4
+
+  - symbol: "ETH-USDT-SWAP"
+    enabled: true
+    min_order_size: 0.001
+    price_precision: 2
+    size_precision: 3
+    leverage: 4
+    max_position: 2.0
+    min_confidence: 0.55
+    position:
+      base: 0.04
+      max: 0.10
+      min: 0.008
+    fallback_multipliers:
+      ai_hold: 0.55
+      ai_no_direction: 0.45
+      ai_low_confidence: 0.35
 
 # 合约交易配置
 contract_trading:

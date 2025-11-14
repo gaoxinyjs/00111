@@ -33,6 +33,12 @@ class TradingEngine:
         self.logger = get_logger("trading_engine")
         
         # 初始化各个模块
+        trading_pairs_cfg = self.config_mgr.get_config('trading', 'trading_pairs') or []
+        self.pair_config_map = {
+            pair.get('symbol'): pair
+            for pair in trading_pairs_cfg
+            if pair.get('symbol')
+        }
         self.data_collector = DataCollector()
         self.data_processor = DataProcessor()
         self.signal_generator = SignalGenerator()
@@ -459,7 +465,8 @@ class TradingEngine:
             'orderbook': orderbook_data,
             'funding': {},
             'chain': {},
-            'sentiment': {}
+            'sentiment': {},
+            'pair_config': self.pair_config_map.get(symbol, {})
         }
         return symbol_market_data
     
