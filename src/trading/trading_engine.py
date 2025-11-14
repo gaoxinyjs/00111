@@ -4,8 +4,8 @@
 交易引擎
 整合数据采集、信号生成、决策、执行、风险管理的完整交易流程
 """
-
 import asyncio
+from copy import deepcopy
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from ..core.config_manager import get_config_manager
@@ -44,6 +44,8 @@ class TradingEngine:
         self.position_manager = PositionManager()
         self.profit_statistics = ProfitStatistics()
         self.okx_client = None  # 异步初始化
+        self._latest_market_data: Dict[str, Dict[str, Any]] = {}
+        self._latest_market_data_ts: Optional[datetime] = None
         
         # 多时间周期分析器
         from ..analysis.multi_timeframe_analyzer import MultiTimeframeAnalyzer
@@ -206,6 +208,7 @@ class TradingEngine:
                 
                 # 2. 获取市场数据（包含多时间周期数据）
                 market_data = await self._collect_market_data()
+                self._update_market_data_cache(market_data)
                 
                 # 2.1. 多时间周期趋势分析和量价分析
                 multi_timeframe_analysis = self.multi_timeframe_analyzer.analyze_trends(market_data)
@@ -439,6 +442,36 @@ class TradingEngine:
             self.logger.error(f"收集市场数据失败: {e}")
         
         return market_data
+    
+    def _update_market_data_cache(self, market_data: Dict[str, Dict[str, Any]],
+                                  symbols: Optional[List[str]] = None):
+        """更新市场数据缓存"""
+        if not market_data:
+            return
+        now = datetime.now()
+        if symbols:
+            if not self._latest_market_data:
+                self._latest_market_data = {}
+            for symbol in symbols:
+                if symbol in market_data:
+                    self._latest_market_data[symbol] = deepcopy(market_data[symbol])
+        else:
+            self._latest_market_data = deepcopy(market_data)
+        self._latest_market_data_ts = now
+    
+    def _get_cached_market_data(self, symbols: Optional[List[str]] = None,
+                                max_age_seconds: int = 5) -> Optional[Dict[str, Dict[str, Any]]]:
+        """在允许的时间窗内返回缓存的市场数据"""
+        if not self._latest_market_data_ts:
+            return None
+        age = (datetime.now() - self._latest_market_data_ts).total_seconds()
+        if age > max_age_seconds:
+            return None
+        if symbols:
+            if any(symbol not in self._latest_market_data for symbol in symbols):
+                return None
+            return deepcopy({symbol: self._latest_market_data[symbol] for symbol in symbols})
+        return deepcopy(self._latest_market_data)
     
     async def _generate_signals(self, market_data: Dict[str, Dict[str, Any]]) -> List:
         """
@@ -975,8 +1008,18 @@ class TradingEngine:
                         
                         # 获取快速止损止盈配置（账户盈亏百分比）
                         trading_config = self.config_mgr.get_config('trading', 'auto_trading', {})
-                        quick_profit_target = trading_config.get('quick_profit_target', 0.05) * 100  # 账户盈亏5%
-                        quick_stop_loss = trading_config.get('quick_stop_loss', 0.015) * 100  # 账户盈亏1.5%
+                        risk_limits_cfg = self.config_mgr.get_config('risk', 'risk_limits', {}) or {}
+                        max_loss_per_trade = risk_limits_cfg.get('max_loss_per_trade')
+                        quick_stop_loss_ratio = trading_config.get('quick_stop_loss', max_loss_per_trade or 0.02)
+                        if max_loss_per_trade:
+                            quick_stop_loss_ratio = max_loss_per_trade
+                        quick_profit_target_ratio = trading_config.get('quick_profit_target')
+                        if quick_profit_target_ratio is None:
+                            quick_profit_target_ratio = quick_stop_loss_ratio * 2
+                        if quick_profit_target_ratio < quick_stop_loss_ratio * 1.5:
+                            quick_profit_target_ratio = quick_stop_loss_ratio * 2
+                        quick_profit_target = quick_profit_target_ratio * 100
+                        quick_stop_loss = quick_stop_loss_ratio * 100
                         
                         # ⚠️ 优先检查快速止损（保护资金）- 这是最重要的检查！
                         # 使用账户盈亏百分比进行比较
@@ -1461,6 +1504,7 @@ class TradingEngine:
                         try:
                             # 获取最新市场数据
                             latest_market_data = await self._collect_market_data()
+                            self._update_market_data_cache(latest_market_data)
                             symbol_market_data = latest_market_data.get(symbol, {})
                             
                             if symbol_market_data:
@@ -1514,7 +1558,10 @@ class TradingEngine:
                 
                 # 获取市场数据
                 try:
-                    market_data = await self._collect_market_data()
+                    market_data = self._get_cached_market_data(max_age_seconds=5)
+                    if market_data is None:
+                        market_data = await self._collect_market_data()
+                        self._update_market_data_cache(market_data)
                     if market_data:
                         # 执行快速止损检查
                         await self._check_position_adjustments(
@@ -1555,7 +1602,14 @@ class TradingEngine:
                     if not symbols:
                         self.logger.debug("[AI仓位审查] 当前无持仓，跳过本次检查")
                     else:
-                        market_data = await self._collect_market_data(symbols)
+                        market_data = self._get_cached_market_data(
+                            symbols=symbols,
+                            max_age_seconds=max(5, self.ai_review_interval)
+                        )
+                        if market_data is None:
+                            market_data = await self._collect_market_data(symbols)
+                            if market_data:
+                                self._update_market_data_cache(market_data, symbols=list(market_data.keys()))
                         if market_data:
                             await self._check_position_adjustments(
                                 market_data,
@@ -1673,6 +1727,7 @@ class TradingEngine:
                     try:
                         # 获取最新市场数据
                         latest_market_data = await self._collect_market_data()
+                        self._update_market_data_cache(latest_market_data)
                         symbol_market_data = latest_market_data.get(symbol, {})
                         
                         if not symbol_market_data:
