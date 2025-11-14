@@ -82,6 +82,7 @@ class DecisionEngine:
         self.position_calculator = PositionCalculator()
         self.risk_evaluator = RiskEvaluator()
         self.entry_timing_evaluator = EntryTimingEvaluator()
+        self.dynamic_confidence_threshold: Optional[float] = None
         
         # 决策历史
         self.decision_history: List[TradingDecision] = []
@@ -281,6 +282,11 @@ class DecisionEngine:
             auto_trading_cfg = self.config_mgr.get_config('trading', 'auto_trading', {})
             pair_min_conf = pair_cfg.get('min_confidence')
             min_confidence_cfg = pair_min_conf if pair_min_conf is not None else auto_trading_cfg.get('min_confidence', 0.3)
+            if self.dynamic_confidence_threshold is not None:
+                try:
+                    min_confidence_cfg = max(float(min_confidence_cfg), float(self.dynamic_confidence_threshold))
+                except (TypeError, ValueError):
+                    min_confidence_cfg = self.dynamic_confidence_threshold
             
             # 查找DeepSeek信号
             for signal in signals:
@@ -655,6 +661,10 @@ class DecisionEngine:
                 decision._deepseek_direction = deepseek_direction
                 decision._deepseek_entry_price = entry_limit_price
                 decision._deepseek_exit_price = exit_limit_price
+                decision._fallback = {
+                    'used': False,
+                    'reason': fallback_reason if fallback_reason else None
+                }
                 
                 # 记录决策
                 self.decision_history.append(decision)
@@ -997,6 +1007,10 @@ class DecisionEngine:
                 signals=[s.to_dict() for s in signals],
                 risk_assessment=risk_assessment
             )
+            decision._fallback = {
+                'used': bool(fallback_to_internal),
+                'reason': fallback_reason if fallback_reason else None
+            }
             
             # 7. 记录决策历史
             self.decision_history.append(decision)
@@ -1093,6 +1107,17 @@ class DecisionEngine:
             signals=[{'source': 'ai', 'analysis': analysis}],
             risk_assessment={'reason': reason, 'trigger': 'ai_exit'}
         )
+
+    def set_confidence_override(self, threshold: Optional[float]):
+        """设置AI最小信心度覆盖值"""
+        if threshold is None:
+            self.dynamic_confidence_threshold = None
+            return
+        try:
+            value = float(threshold)
+            self.dynamic_confidence_threshold = max(0.0, min(value, 1.0))
+        except (TypeError, ValueError):
+            self.dynamic_confidence_threshold = None
 
     def _calculate_signal_bias(self, symbol: str, signals: List[Signal]) -> float:
         """根据全部信号计算多因子方向倾向"""

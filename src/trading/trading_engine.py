@@ -68,6 +68,10 @@ class TradingEngine:
         from ..learning.prompt_optimizer import PromptOptimizer
         self.result_recorder = TradeResultRecorder()
         self.prompt_optimizer = PromptOptimizer()
+        self.strategy_guidelines: List[Dict[str, Any]] = []
+        self._active_emphasis_factors: List[str] = []
+        self._active_caution_factors: List[str] = []
+        self._prompt_opt_running = False
         
         # 记录优化触发间隔（每10笔交易优化一次）
         self.optimization_interval = 10
@@ -363,6 +367,130 @@ class TradingEngine:
                 return None
             return deepcopy({symbol: self._latest_market_data[symbol] for symbol in symbols})
         return deepcopy(self._latest_market_data)
+
+    def _derive_session_tag(self, current_time: Optional[datetime] = None) -> str:
+        """根据UTC时间估算交易会话"""
+        now = current_time or datetime.utcnow()
+        hour = now.hour
+        if 0 <= hour < 8:
+            return 'asia'
+        if 8 <= hour < 16:
+            return 'europe'
+        return 'us'
+    
+    def _derive_volatility_regime(self, market_data: Dict[str, Any]) -> str:
+        """根据波动率指标估算市场状态"""
+        indicators = (market_data or {}).get('indicators', {}) or {}
+        volatility = indicators.get('volatility')
+        try:
+            vol_value = float(str(volatility).replace('%', ''))
+            if vol_value < 2:
+                return 'low'
+            if vol_value < 4:
+                return 'medium'
+            return 'high'
+        except (ValueError, TypeError):
+            return 'unknown'
+    
+    def _build_strategy_context(self, decision, ai_analysis: Dict[str, Any],
+                                market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """构建用于自学习的策略快照"""
+        ai_analysis = ai_analysis or {}
+        multi_timeframe = (market_data or {}).get('multi_timeframe', {}) or {}
+        fallback_meta = getattr(decision, '_fallback', {})
+        context = {
+            'position': {
+                'size': decision.position_size,
+                'side': decision.position_side,
+                'stop_loss': decision.stop_loss,
+                'take_profit': decision.take_profit
+            },
+            'risk_assessment': decision.risk_assessment,
+            'signals': decision.signals,
+            'fallback': fallback_meta,
+            'entry_timing': multi_timeframe.get('entry_timing'),
+            'multi_timeframe': multi_timeframe,
+            'ai_confidence': ai_analysis.get('confidence'),
+            'ai_recommendation': ai_analysis.get('recommendation'),
+            'key_factors': ai_analysis.get('key_factors')
+        }
+        return context
+    
+    def _get_prompt_optimization_threshold(self) -> int:
+        """根据近期表现动态设定触发优化所需的交易数量"""
+        base_threshold = self.optimization_interval
+        try:
+            stats = self.result_recorder.get_performance_stats()
+            win_rate = stats.get('win_rate', 0) or 0
+            total_trades = stats.get('total_trades', 0) or 0
+            if total_trades >= 5 and win_rate < 40:
+                base_threshold = max(5, int(self.optimization_interval * 0.8))
+            elif total_trades >= 10 and win_rate > 60:
+                base_threshold = int(self.optimization_interval * 1.5)
+        except Exception as e:
+            self.logger.debug(f"计算提示词优化阈值失败: {e}")
+        return max(5, base_threshold)
+    
+    def _schedule_prompt_optimization(self):
+        """在达到条件时异步触发提示词优化"""
+        if self._prompt_opt_running:
+            return
+        threshold = self._get_prompt_optimization_threshold()
+        if self.trade_count_since_optimization < threshold:
+            return
+        if not self.prompt_optimizer:
+            return
+        self._prompt_opt_running = True
+        asyncio.create_task(self._run_prompt_optimization(threshold))
+    
+    async def _run_prompt_optimization(self, min_trades: int):
+        """后台执行提示词优化并应用指导原则"""
+        try:
+            self.logger.info(f"[自学习] 达到{min_trades}笔交易，启动提示词优化")
+            optimized_prompt = await asyncio.to_thread(self.prompt_optimizer.optimize_prompt, min_trades)
+            if optimized_prompt:
+                guidelines = self.prompt_optimizer.get_current_guidelines()
+                self.logger.info(
+                    f"[自学习] 提示词优化完成，版本: {optimized_prompt.get('version')}, "
+                    f"指导原则数: {len(guidelines)}"
+                )
+                self._apply_guidelines_to_strategy(guidelines)
+                self.trade_count_since_optimization = 0
+            else:
+                self.logger.info("[自学习] 本轮无可用优化建议")
+        except Exception as e:
+            self.logger.error(f"[自学习] 提示词优化失败: {e}")
+        finally:
+            self._prompt_opt_running = False
+    
+    def _apply_guidelines_to_strategy(self, guidelines: List[Dict[str, Any]]):
+        """将提示词指导原则反馈至策略与决策引擎"""
+        self.strategy_guidelines = guidelines or []
+        confidence_applied = False
+        self._active_emphasis_factors = []
+        self._active_caution_factors = []
+        
+        for guideline in self.strategy_guidelines:
+            gtype = guideline.get('type')
+            if gtype == 'confidence_threshold':
+                value = guideline.get('value')
+                try:
+                    threshold = float(value)
+                    self.decision_engine.set_confidence_override(threshold)
+                    self.min_confidence = max(self.min_confidence, threshold)
+                    confidence_applied = True
+                    self.logger.info(f"[自学习] 应用AI信心度下限: {threshold:.2f}")
+                except (TypeError, ValueError):
+                    self.logger.warning(f"[自学习] 无法解析信心度指导: {value}")
+            elif gtype == 'emphasis':
+                self._active_emphasis_factors = guideline.get('factors', []) or []
+                self.logger.info(f"[自学习] 重点关注因子: {', '.join(self._active_emphasis_factors)}")
+            elif gtype == 'deemphasis':
+                self._active_caution_factors = guideline.get('factors', []) or []
+                self.logger.info(f"[自学习] 谨慎因子: {', '.join(self._active_caution_factors)}")
+        
+        if not confidence_applied:
+            self.decision_engine.set_confidence_override(None)
 
     async def _collect_symbol_market_data(self, symbol: str) -> Optional[Dict[str, Any]]:
         """并发采集单个交易对的行情、K线、指标与订单簿"""
@@ -1026,6 +1154,9 @@ class TradingEngine:
                 
                 # 记录交易决策（开仓时）
                 if not self._is_closing_position(symbol, decision.action):
+                    strategy_context = self._build_strategy_context(decision, ai_analysis, symbol_market_data)
+                    session_tag = self._derive_session_tag()
+                    volatility_regime = self._derive_volatility_regime(symbol_market_data)
                     # 这是开仓，记录决策
                     record_id = self.result_recorder.record_trade_decision(
                         symbol=symbol,
@@ -1036,7 +1167,10 @@ class TradingEngine:
                             'confidence': decision.confidence,
                         },
                         ai_analysis=ai_analysis,
-                        market_data=symbol_market_data
+                        market_data=symbol_market_data,
+                        strategy_context=strategy_context,
+                        session_tag=session_tag,
+                        volatility_regime=volatility_regime
                     )
                     # 将record_id保存到决策中，以便平仓时使用
                     decision._record_id = record_id
@@ -2251,6 +2385,8 @@ class TradingEngine:
                         holding_duration_hours=holding_hours,
                         exit_reason=exit_reason
                     )
+                    self.trade_count_since_optimization += 1
+                    self._schedule_prompt_optimization()
                 except Exception as err:
                     self.logger.error(f"写入交易结果失败 {symbol}: {err}")
             
