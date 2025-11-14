@@ -284,157 +284,40 @@ class TradingEngine:
         Returns:
             市场数据字典（按交易对索引）
         """
-        market_data = {}
+        market_data: Dict[str, Dict[str, Any]] = {}
         
         try:
-            # 获取所有交易对的数据
             trading_pairs = self.config_mgr.get_config('trading', 'trading_pairs')
             symbols_filter = set(symbols) if symbols else None
+            symbols_to_collect: List[str] = []
             
             for pair in trading_pairs:
                 if not pair.get('enabled', True):
                     continue
-                
                 symbol = pair.get('symbol')
                 if symbols_filter and symbol not in symbols_filter:
                     continue
-                
-                try:
-                    # 获取行情（异步）
-                    ticker = await self.data_collector.collect_ticker(symbol)
-                    
-                    # 获取多时间周期K线数据（15m, 1H, 4H）（异步）
-                    kline_15m = await self.data_collector.collect_kline(symbol, '15m', 100)
-                    kline_1h = await self.data_collector.collect_kline(symbol, '1H', 100)
-                    kline_4h = await self.data_collector.collect_kline(symbol, '4H', 100)
-                    
-                    # 主要使用15分钟进行技术指标计算
-                    kline = kline_15m
-                    
-                    # 计算技术指标
-                    if kline and isinstance(kline, list) and len(kline) > 0:
-                        try:
-                            df = self.data_processor.calculate_indicators(kline)
-                        except Exception as e:
-                            self.logger.error(f"计算{symbol}技术指标失败: {e}", exc_info=True)
-                            continue
-                        
-                        # 获取计算出的指标
-                        indicators_dict = df.iloc[-1].to_dict() if not df.empty else {}
-                        
-                        # 记录收集到的指标
-                        if indicators_dict:
-                            # 格式化指标值
-                            rsi_val = f"{indicators_dict.get('rsi', 'N/A'):.2f}" if isinstance(indicators_dict.get('rsi'), (int, float)) else str(indicators_dict.get('rsi', 'N/A'))
-                            macd_val = f"{indicators_dict.get('macd', 'N/A'):.4f}" if isinstance(indicators_dict.get('macd'), (int, float)) else str(indicators_dict.get('macd', 'N/A'))
-                            macd_hist_val = f"{indicators_dict.get('macd_hist', 'N/A'):.4f}" if isinstance(indicators_dict.get('macd_hist'), (int, float)) else str(indicators_dict.get('macd_hist', 'N/A'))
-                            bb_upper_val = f"{indicators_dict.get('bb_upper', 'N/A'):.2f}" if isinstance(indicators_dict.get('bb_upper'), (int, float)) else str(indicators_dict.get('bb_upper', 'N/A'))
-                            bb_lower_val = f"{indicators_dict.get('bb_lower', 'N/A'):.2f}" if isinstance(indicators_dict.get('bb_lower'), (int, float)) else str(indicators_dict.get('bb_lower', 'N/A'))
-                            
-                            self.logger.info(
-                                f"[指标汇总] 交易对: {symbol} | "
-                                f"价格: {ticker.get('price', 0)} | "
-                                f"24h涨跌: {ticker.get('change_24h', 0):.2f}% | "
-                                f"RSI: {rsi_val} | "
-                                f"MACD: {macd_val} | "
-                                f"MACD_Hist: {macd_hist_val} | "
-                                f"BB_Upper: {bb_upper_val} | "
-                                f"BB_Lower: {bb_lower_val}"
-                            )
-                            # 记录完整指标（DEBUG级别）
-                            self.logger.debug(f"[指标完整数据] 交易对: {symbol} - {indicators_dict}")
-                        
-                        # 收集订单簿数据（用于做市商意图分析）
-                        orderbook_data = {}
-                        try:
-                            orderbook = await self.data_collector.collect_orderbook(symbol, 20)
-                            if orderbook:
-                                bids = orderbook.get('bids', [])
-                                asks = orderbook.get('asks', [])
-                                # 计算买卖盘总量和比例
-                                bid_volume = sum([float(bid[1]) for bid in bids if len(bid) >= 2])
-                                ask_volume = sum([float(ask[1]) for ask in asks if len(ask) >= 2])
-                                bid_ask_ratio = bid_volume / ask_volume if ask_volume > 0 else 1.0
-                                
-                                orderbook_data = {
-                                    'bids': bids,
-                                    'asks': asks,
-                                    'spread': orderbook.get('spread', 0),
-                                    'bid_volume': bid_volume,
-                                    'ask_volume': ask_volume,
-                                    'bid_ask_ratio': bid_ask_ratio
-                                }
-                        except Exception as e:
-                            self.logger.warning(f"收集{symbol}订单簿数据失败: {e}")
-                        
-                        # 提取更详细的指标信息
-                        detailed_indicators = indicators_dict.copy()
-                        if df is not None and not df.empty:
-                            latest = df.iloc[-1]
-                            # 添加更多技术指标数据
-                            detailed_indicators['close'] = float(latest.get('close', 0))
-                            detailed_indicators['high'] = float(latest.get('high', 0))
-                            detailed_indicators['low'] = float(latest.get('low', 0))
-                            detailed_indicators['volume'] = float(latest.get('volume', 0))
-                            # 添加均线数据
-                            if 'ma_5' in latest:
-                                detailed_indicators['ma_5'] = float(latest.get('ma_5', 0))
-                            if 'ma_20' in latest:
-                                detailed_indicators['ma_20'] = float(latest.get('ma_20', 0))
-                            if 'ma_60' in latest:
-                                detailed_indicators['ma_60'] = float(latest.get('ma_60', 0))
-                            # 添加成交量指标
-                            if 'volume_ma_5' in latest:
-                                detailed_indicators['volume_ma_5'] = float(latest.get('volume_ma_5', 0))
-                            if 'volume_ma_20' in latest:
-                                detailed_indicators['volume_ma_20'] = float(latest.get('volume_ma_20', 0))
-                            
-                            # 计算最近几根K线的价格趋势
-                            if len(df) >= 5:
-                                recent_5 = df.iloc[-5:]
-                                price_change_5 = ((recent_5['close'].iloc[-1] - recent_5['close'].iloc[0]) / recent_5['close'].iloc[0] * 100) if recent_5['close'].iloc[0] > 0 else 0
-                                detailed_indicators['price_change_5k'] = price_change_5
-                            
-                            if len(df) >= 10:
-                                recent_10 = df.iloc[-10:]
-                                price_change_10 = ((recent_10['close'].iloc[-1] - recent_10['close'].iloc[0]) / recent_10['close'].iloc[0] * 100) if recent_10['close'].iloc[0] > 0 else 0
-                                detailed_indicators['price_change_10k'] = price_change_10
-                        
-                        # 准备市场数据（包含多时间周期数据、订单簿数据）
-                        symbol_market_data = {
-                            'symbol': symbol,
-                            'price': ticker.get('price', 0),
-                            'change_24h': ticker.get('change_24h', 0),
-                            'volume_24h': ticker.get('volume_24h', 0),
-                            'high_24h': ticker.get('high_24h', 0),
-                            'low_24h': ticker.get('low_24h', 0),
-                            'kline_15m': kline_15m,  # 15分钟K线
-                            'kline_1H': kline_1h,  # 1小时K线
-                            'kline_4H': kline_4h,  # 4小时K线
-                            'kline': kline,  # 15分钟K线（用于量价分析）
-                            'indicators': detailed_indicators,
-                            'orderbook': orderbook_data,  # 订单簿数据（用于做市商意图分析）
-                            'funding': {},  # 资金面数据（需要从其他地方获取）
-                            'chain': {},  # 链上数据（需要从其他地方获取）
-                            'sentiment': {}  # 情绪数据（需要从其他地方获取）
-                        }
-                        
-                        # 保存到缓存（用于自学习）
-                        if not hasattr(self, 'market_data_cache'):
-                            self.market_data_cache = {}
-                        self.market_data_cache[symbol] = symbol_market_data.copy()
-                        
-                        # 保存到market_data字典
-                        market_data[symbol] = symbol_market_data.copy()
-                    
-                    # 避免API限流
-                    await asyncio.sleep(0.1)
-                
-                except Exception as e:
-                    self.logger.error(f"收集{symbol}市场数据失败: {e}")
+                symbols_to_collect.append(symbol)
+            
+            if not symbols_to_collect:
+                return market_data
+            
+            tasks = [self._collect_symbol_market_data(symbol) for symbol in symbols_to_collect]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            collected_symbols = set()
+            for symbol, result in zip(symbols_to_collect, results):
+                if isinstance(result, Exception):
+                    self.logger.error(f"收集{symbol}市场数据失败: {result}")
+                    continue
+                if not result:
+                    continue
+                market_data[symbol] = result
+                self.market_data_cache[symbol] = result.copy()
+                collected_symbols.add(symbol)
             
             if symbols_filter:
-                missing_symbols = symbols_filter - set(market_data.keys())
+                missing_symbols = symbols_filter - collected_symbols
                 for symbol in missing_symbols:
                     self.logger.warning(f"请求的交易对{symbol}未在交易配置中找到或数据收集失败")
         
@@ -472,6 +355,113 @@ class TradingEngine:
                 return None
             return deepcopy({symbol: self._latest_market_data[symbol] for symbol in symbols})
         return deepcopy(self._latest_market_data)
+
+    async def _collect_symbol_market_data(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """并发采集单个交易对的行情、K线、指标与订单簿"""
+        try:
+            ticker = await self.data_collector.collect_ticker(symbol)
+        except Exception as e:
+            self.logger.error(f"收集{symbol}行情失败: {e}")
+            return None
+        
+        try:
+            kline_15m, kline_1h, kline_4h = await asyncio.gather(
+                self.data_collector.collect_kline(symbol, '15m', 100),
+                self.data_collector.collect_kline(symbol, '1H', 100),
+                self.data_collector.collect_kline(symbol, '4H', 100)
+            )
+        except Exception as e:
+            self.logger.error(f"收集{symbol}K线数据失败: {e}")
+            return None
+        
+        orderbook_data: Dict[str, Any] = {}
+        try:
+            orderbook = await self.data_collector.collect_orderbook(symbol, 20)
+            if orderbook:
+                bids = orderbook.get('bids', [])
+                asks = orderbook.get('asks', [])
+                bid_volume = sum(float(bid[1]) for bid in bids if len(bid) >= 2)
+                ask_volume = sum(float(ask[1]) for ask in asks if len(ask) >= 2)
+                bid_ask_ratio = bid_volume / ask_volume if ask_volume > 0 else 1.0
+                orderbook_data = {
+                    'bids': bids,
+                    'asks': asks,
+                    'spread': orderbook.get('spread', 0),
+                    'bid_volume': bid_volume,
+                    'ask_volume': ask_volume,
+                    'bid_ask_ratio': bid_ask_ratio
+                }
+        except Exception as e:
+            self.logger.warning(f"收集{symbol}订单簿数据失败: {e}")
+        
+        kline = kline_15m
+        indicators_dict: Dict[str, Any] = {}
+        df = None
+        if kline and isinstance(kline, list) and len(kline) > 0:
+            try:
+                df = self.data_processor.calculate_indicators(kline)
+                if df is not None and not df.empty:
+                    indicators_dict = df.iloc[-1].to_dict()
+            except Exception as e:
+                self.logger.error(f"计算{symbol}技术指标失败: {e}", exc_info=True)
+                indicators_dict = {}
+        
+        if indicators_dict:
+            def _fmt(value, fmt_str="{:.2f}"):
+                return fmt_str.format(value) if isinstance(value, (int, float)) else str(value)
+            self.logger.info(
+                f"[指标汇总] 交易对: {symbol} | "
+                f"价格: {ticker.get('price', 0)} | "
+                f"24h涨跌: {ticker.get('change_24h', 0):.2f}% | "
+                f"RSI: {_fmt(indicators_dict.get('rsi'), '{:.2f}')} | "
+                f"MACD: {_fmt(indicators_dict.get('macd'), '{:.4f}')} | "
+                f"MACD_Hist: {_fmt(indicators_dict.get('macd_hist'), '{:.4f}')} | "
+                f"BB_Upper: {_fmt(indicators_dict.get('bb_upper'), '{:.2f}')} | "
+                f"BB_Lower: {_fmt(indicators_dict.get('bb_lower'), '{:.2f}')}"
+            )
+            self.logger.debug(f"[指标完整数据] 交易对: {symbol} - {indicators_dict}")
+        
+        detailed_indicators = indicators_dict.copy()
+        if df is not None and not df.empty:
+            latest = df.iloc[-1]
+            detailed_indicators['close'] = float(latest.get('close', 0))
+            detailed_indicators['high'] = float(latest.get('high', 0))
+            detailed_indicators['low'] = float(latest.get('low', 0))
+            detailed_indicators['volume'] = float(latest.get('volume', 0))
+            for key in ['ma_5', 'ma_20', 'ma_60']:
+                if key in latest:
+                    detailed_indicators[key] = float(latest.get(key, 0))
+            if 'volume_ma_5' in latest:
+                detailed_indicators['volume_ma_5'] = float(latest.get('volume_ma_5', 0))
+            if 'volume_ma_20' in latest:
+                detailed_indicators['volume_ma_20'] = float(latest.get('volume_ma_20', 0))
+            if len(df) >= 5:
+                recent_5 = df.iloc[-5:]
+                price_change_5 = ((recent_5['close'].iloc[-1] - recent_5['close'].iloc[0]) / recent_5['close'].iloc[0] * 100) if recent_5['close'].iloc[0] > 0 else 0
+                detailed_indicators['price_change_5k'] = price_change_5
+            if len(df) >= 10:
+                recent_10 = df.iloc[-10:]
+                price_change_10 = ((recent_10['close'].iloc[-1] - recent_10['close'].iloc[0]) / recent_10['close'].iloc[0] * 100) if recent_10['close'].iloc[0] > 0 else 0
+                detailed_indicators['price_change_10k'] = price_change_10
+        
+        symbol_market_data = {
+            'symbol': symbol,
+            'price': ticker.get('price', 0),
+            'change_24h': ticker.get('change_24h', 0),
+            'volume_24h': ticker.get('volume_24h', 0),
+            'high_24h': ticker.get('high_24h', 0),
+            'low_24h': ticker.get('low_24h', 0),
+            'kline_15m': kline_15m,
+            'kline_1H': kline_1h,
+            'kline_4H': kline_4h,
+            'kline': kline,
+            'indicators': detailed_indicators,
+            'orderbook': orderbook_data,
+            'funding': {},
+            'chain': {},
+            'sentiment': {}
+        }
+        return symbol_market_data
     
     async def _generate_signals(self, market_data: Dict[str, Dict[str, Any]]) -> List:
         """
