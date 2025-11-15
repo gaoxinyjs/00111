@@ -68,6 +68,19 @@ class SignalGenerator:
         # 信号历史
         self.signal_history: List[Signal] = []
     
+    def _safe_float(self, value: Any, default: float = 0.0) -> float:
+        """安全转换为浮点数"""
+        if value is None:
+            return default
+        try:
+            if isinstance(value, str):
+                value = value.strip()
+                if value.endswith('%'):
+                    value = value[:-1]
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+    
     def generate_technical_signal(self, symbol: str, kline_data: List[Dict[str, Any]]) -> Optional[Signal]:
         """
         生成技术面信号
@@ -325,6 +338,156 @@ class SignalGenerator:
             self.logger.error(f"生成资金面信号失败 {symbol}: {e}")
         
         return None
+    
+    def generate_multi_factor_signal(self, symbol: str, market_data: Dict[str, Any]) -> Optional[Signal]:
+        """
+        生成趋势+订单流+资金面的多因子信号
+        """
+        multi_cfg = (self.signal_config or {}).get('multi_factor', {}) or {}
+        if not multi_cfg.get('enabled', True):
+            return None
+        
+        try:
+            def clamp(val: float, bound: float = 1.0) -> float:
+                return max(-bound, min(bound, val))
+            
+            multi_timeframe = market_data.get('multi_timeframe', {}) or {}
+            indicators = market_data.get('indicators', {}) or {}
+            orderflow = market_data.get('orderflow', {}) or {}
+            funding = market_data.get('funding', {}) or {}
+            derivatives = market_data.get('derivatives', {}) or {}
+            basis_data = derivatives.get('basis', {}) or {}
+            liquidation_data = derivatives.get('liquidations', {}) or {}
+            sentiment = market_data.get('sentiment', {}) or {}
+            macro = market_data.get('macro', {}) or {}
+            impact_data = market_data.get('impact', {}) or {}
+            
+            # 1. 趋势/动量评分
+            trend_score = 0.0
+            mtf_confidence = clamp(self._safe_float(multi_timeframe.get('confidence'), 0.0), 1.0)
+            entry_direction = str(multi_timeframe.get('entry_direction', '')).lower()
+            if entry_direction in ['long', 'buy']:
+                trend_score += 0.6 * max(mtf_confidence, 0.2)
+            elif entry_direction in ['short', 'sell']:
+                trend_score -= 0.6 * max(mtf_confidence, 0.2)
+            
+            overall_trend = str(multi_timeframe.get('overall_trend', '')).lower()
+            if any(token in overall_trend for token in ['bull', '上', '多']):
+                trend_score += 0.25
+            elif any(token in overall_trend for token in ['bear', '下', '空']):
+                trend_score -= 0.25
+            
+            price_change_5 = self._safe_float(indicators.get('price_change_5k'))
+            price_change_10 = self._safe_float(indicators.get('price_change_10k'))
+            if price_change_5 != 0:
+                trend_score += clamp(price_change_5 / 10.0 * 0.3, 0.3)
+            if price_change_10 != 0:
+                trend_score += clamp(price_change_10 / 15.0 * 0.2, 0.2)
+            
+            trend_score = clamp(trend_score, 1.0)
+            
+            # 2. 订单流/微观结构评分
+            orderflow_score = 0.0
+            taker_ratio = self._safe_float(orderflow.get('taker_buy_ratio'), 0.5)
+            orderflow_score += clamp((taker_ratio - 0.5) * 1.2, 0.6)
+            net_flow = self._safe_float(orderflow.get('net_flow'))
+            if net_flow != 0:
+                orderflow_score += clamp(net_flow / 50000.0, 0.3)
+            block_bias = str((orderflow.get('block_trades') or {}).get('bias', '')).lower()
+            if block_bias == 'buy':
+                orderflow_score += 0.15
+            elif block_bias == 'sell':
+                orderflow_score -= 0.15
+            impact_buy = self._safe_float((impact_data.get('buy') or {}).get('impact_pct'))
+            impact_sell = self._safe_float((impact_data.get('sell') or {}).get('impact_pct'))
+            if impact_buy and impact_sell:
+                if abs(impact_buy) < abs(impact_sell):
+                    orderflow_score += 0.05
+                elif abs(impact_buy) > abs(impact_sell):
+                    orderflow_score -= 0.05
+            orderflow_score = clamp(orderflow_score, 1.0)
+            
+            # 3. 资金面/持仓结构评分
+            funding_score = 0.0
+            current_rate = self._safe_float(funding.get('current_rate'))
+            if current_rate != 0:
+                funding_score += clamp(-current_rate * 4000.0, 0.4)
+            basis_pct = self._safe_float(basis_data.get('spot_basis_pct'))
+            if basis_pct != 0:
+                funding_score += clamp(basis_pct * 50.0, 0.3)
+            annualized_pct = self._safe_float(basis_data.get('funding_annualized_pct'))
+            if annualized_pct != 0:
+                funding_score += clamp(-annualized_pct * 0.2, 0.2)
+            net_liquidation = self._safe_float(liquidation_data.get('net_volume'))
+            if net_liquidation > 0:
+                funding_score -= clamp(net_liquidation / 100000.0, 0.2)
+            elif net_liquidation < 0:
+                funding_score += clamp(abs(net_liquidation) / 100000.0, 0.2)
+            funding_score = clamp(funding_score, 1.0)
+            
+            # 4. 风险调整
+            trend_weight = float(multi_cfg.get('trend_weight', 0.4) or 0.4)
+            order_weight = float(multi_cfg.get('orderflow_weight', 0.35) or 0.35)
+            funding_weight = float(multi_cfg.get('funding_weight', 0.25) or 0.25)
+            weight_sum = max(trend_weight + order_weight + funding_weight, 0.001)
+            raw_score = (
+                trend_weight * trend_score +
+                order_weight * orderflow_score +
+                funding_weight * funding_score
+            ) / weight_sum
+            raw_score = clamp(raw_score, 1.0)
+            
+            macro_risk = str(macro.get('risk_level', 'normal')).lower()
+            risk_multiplier = {
+                'high': 0.5,
+                'medium': 0.75,
+                'low': 1.05,
+                'normal': 1.0
+            }.get(macro_risk, 1.0)
+            sentiment_label = str(sentiment.get('label', '')).lower()
+            if sentiment_label == 'strong_buy_flow':
+                risk_multiplier *= 1.05
+            elif sentiment_label == 'strong_sell_flow':
+                risk_multiplier *= 0.95
+            risk_multiplier = clamp(risk_multiplier, 1.2)
+            
+            final_score = clamp(raw_score * risk_multiplier, 1.2)
+            
+            min_score = float(multi_cfg.get('min_score', 0.25) or 0.25)
+            secondary_score = float(multi_cfg.get('secondary_score', 0.15) or 0.15)
+            
+            if final_score >= min_score:
+                signal_type = 'buy'
+                strength = min(1.0, final_score)
+            elif final_score <= -min_score:
+                signal_type = 'sell'
+                strength = min(1.0, abs(final_score))
+            elif abs(final_score) >= secondary_score:
+                signal_type = 'buy' if final_score > 0 else 'sell'
+                strength = min(0.5, abs(final_score))
+            else:
+                return None
+            
+            return Signal(
+                symbol=symbol,
+                signal_type=signal_type,
+                strength=strength,
+                source='multi_factor',
+                data={
+                    'trend_score': trend_score,
+                    'orderflow_score': orderflow_score,
+                    'funding_score': funding_score,
+                    'raw_score': raw_score,
+                    'final_score': final_score,
+                    'risk_multiplier': risk_multiplier,
+                    'macro_risk': macro_risk,
+                    'sentiment_label': sentiment_label
+                }
+            )
+        
+        except Exception as e:
+            self.logger.error(f"生成多因子信号失败 {symbol}: {e}")
+            return None
     
     def generate_ai_signal(self, symbol: str, market_data: Dict[str, Any]) -> Optional[Signal]:
         """
@@ -720,7 +883,12 @@ class SignalGenerator:
             if funding_signal:
                 signals.append(funding_signal)
         
-        # 4. AI分析信号
+        # 4. 多因子组合信号
+        multi_factor_signal = self.generate_multi_factor_signal(symbol, market_data)
+        if multi_factor_signal:
+            signals.append(multi_factor_signal)
+        
+        # 5. AI分析信号
         ai_signal = self.generate_ai_signal(symbol, market_data)
         if ai_signal:
             signals.append(ai_signal)

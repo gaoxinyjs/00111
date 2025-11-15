@@ -120,6 +120,15 @@ signal_generation:
     model: "deepseek-chat"
     temperature: 0.3
     max_tokens: 2000
+    
+    # 多因子组合（趋势 + 订单流 + 资金面）
+    multi_factor:
+      enabled: true
+      trend_weight: 0.4
+      orderflow_weight: 0.35
+      funding_weight: 0.25
+      min_score: 0.25
+      secondary_score: 0.15
 
 # 交易优化配置（针对15分钟K线优化：提高交易频率，放宽过滤条件）
 trading_optimization:
@@ -151,6 +160,7 @@ signal_scoring:
     funding: 0.15  # 资金面信号
     chain: 0.15  # 链上信号
     sentiment: 0.10  # 情绪面信号
+    multi_factor: 0.25  # 多因子组合（趋势+订单流+资金面）
     ai_analysis: 0.05  # AI分析（主要用于辅助）
   
   thresholds:
