@@ -32,6 +32,14 @@ class DataCollector:
         self.market_data_cache: Dict[str, Dict] = {}
         self.orderbook_cache: Dict[str, Dict] = {}
         self.kline_cache: Dict[str, List] = {}
+        self.funding_cache: Dict[str, Dict] = {}
+        self.open_interest_cache: Dict[str, Dict] = {}
+        self.taker_volume_cache: Dict[str, Dict] = {}
+        self.long_short_cache: Dict[str, Dict] = {}
+        self.trade_cache: Dict[str, List] = {}
+        self.mark_price_cache: Dict[str, Dict] = {}
+        self.index_price_cache: Dict[str, Dict] = {}
+        self.liquidation_cache: Dict[str, Dict] = {}
         
         # 回调函数
         self.callbacks: Dict[str, List[Callable]] = {
@@ -181,6 +189,230 @@ class DataCollector:
         except Exception as e:
             self.logger.error(f"采集订单簿数据失败 {symbol}: {e}")
             raise DataException(f"采集订单簿数据失败: {e}")
+    
+    async def collect_funding_rate(self, symbol: str) -> Dict[str, Any]:
+        """采集资金费率数据"""
+        try:
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
+            funding_data = await self.okx_client.async_get_funding_rate(symbol)
+            if funding_data and isinstance(funding_data, list):
+                latest = funding_data[0]
+                processed = {
+                    'symbol': symbol,
+                    'current_rate': float(latest.get('fundingRate', 0) or 0),
+                    'next_rate': float(latest.get('nextFundingRate', 0) or 0),
+                    'funding_time': latest.get('fundingTime'),
+                    'next_funding_time': latest.get('nextFundingTime'),
+                    'interest_rate': float(latest.get('interestRate', 0) or 0),
+                    'settle_time': latest.get('settleTime')
+                }
+                self.funding_cache[symbol] = processed
+                return processed
+        except Exception as e:
+            self.logger.warning(f"采集{symbol}资金费率失败: {e}")
+        return self.funding_cache.get(symbol, {})
+    
+    async def collect_open_interest(self, symbol: str) -> Dict[str, Any]:
+        """采集未平仓量"""
+        try:
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
+            oi_data = await self.okx_client.async_get_open_interest(symbol)
+            if oi_data and isinstance(oi_data, list):
+                latest = oi_data[0]
+                processed = {
+                    'symbol': symbol,
+                    'amount': float(latest.get('oi', 0) or 0),
+                    'amount_ccy': float(latest.get('oiCcy', 0) or 0),
+                    'timestamp': latest.get('ts')
+                }
+                self.open_interest_cache[symbol] = processed
+                return processed
+        except Exception as e:
+            self.logger.warning(f"采集{symbol}未平仓量失败: {e}")
+        return self.open_interest_cache.get(symbol, {})
+    
+    async def collect_taker_volume(self, symbol: str, period: str = '5m') -> Dict[str, Any]:
+        """采集主动买卖量"""
+        try:
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
+            taker_data = await self.okx_client.async_get_taker_volume(symbol, period=period)
+            if taker_data and isinstance(taker_data, list):
+                latest = taker_data[0]
+                buy_vol = float(latest.get('buyVol', 0) or 0)
+                sell_vol = float(latest.get('sellVol', 0) or 0)
+                buy_value = float(latest.get('buyVolValue', 0) or 0)
+                sell_value = float(latest.get('sellVolValue', 0) or 0)
+                processed = {
+                    'symbol': symbol,
+                    'period': period,
+                    'buy_vol': buy_vol,
+                    'sell_vol': sell_vol,
+                    'buy_value': buy_value,
+                    'sell_value': sell_value,
+                    'taker_buy_ratio': buy_vol / (buy_vol + sell_vol) if (buy_vol + sell_vol) > 0 else 0.5,
+                    'timestamp': latest.get('ts')
+                }
+                self.taker_volume_cache[symbol] = processed
+                return processed
+        except Exception as e:
+            self.logger.warning(f"采集{symbol}主动买卖量失败: {e}")
+        return self.taker_volume_cache.get(symbol, {})
+    
+    async def collect_long_short_ratio(self, symbol: str, period: str = '5m') -> Dict[str, Any]:
+        """采集多空账户占比"""
+        try:
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
+            ratio_data = await self.okx_client.async_get_long_short_ratio(symbol, period=period)
+            if ratio_data and isinstance(ratio_data, list):
+                latest = ratio_data[0]
+                long_ratio = float(latest.get('longAccount', 0) or 0)
+                short_ratio = float(latest.get('shortAccount', 0) or 0)
+                processed = {
+                    'symbol': symbol,
+                    'period': period,
+                    'long_ratio': long_ratio,
+                    'short_ratio': short_ratio,
+                    'long_short_ratio': long_ratio / short_ratio if short_ratio > 0 else None,
+                    'timestamp': latest.get('ts')
+                }
+                self.long_short_cache[symbol] = processed
+                return processed
+        except Exception as e:
+            self.logger.warning(f"采集{symbol}多空账户占比失败: {e}")
+        return self.long_short_cache.get(symbol, {})
+    
+    async def collect_mark_price(self, symbol: str) -> Dict[str, Any]:
+        """采集标记价格"""
+        try:
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
+            mark_data = await self.okx_client.async_get_mark_price(symbol)
+            if mark_data and isinstance(mark_data, list):
+                entry = mark_data[0]
+                processed = {
+                    'symbol': symbol,
+                    'mark_price': float(entry.get('markPx', 0) or 0),
+                    'index_price': float(entry.get('indexPx', 0) or 0),
+                    'last': float(entry.get('last', 0) or 0),
+                    'timestamp': entry.get('ts')
+                }
+                self.mark_price_cache[symbol] = processed
+                return processed
+        except Exception as e:
+            self.logger.warning(f"采集{symbol}标记价格失败: {e}")
+        return self.mark_price_cache.get(symbol, {})
+    
+    async def collect_index_price(self, symbol: str) -> Dict[str, Any]:
+        """采集指数价格"""
+        try:
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
+            underlying = self.okx_client._extract_underlying(symbol)
+            index_data = await self.okx_client.async_get_index_ticker(underlying)
+            if index_data and isinstance(index_data, list):
+                entry = index_data[0]
+                processed = {
+                    'symbol': underlying,
+                    'index_price': float(entry.get('idxPx', 0) or 0),
+                    'open_price': float(entry.get('open24h', 0) or 0),
+                    'high_price': float(entry.get('high24h', 0) or 0),
+                    'low_price': float(entry.get('low24h', 0) or 0),
+                    'timestamp': entry.get('ts')
+                }
+                self.index_price_cache[symbol] = processed
+                return processed
+        except Exception as e:
+            self.logger.warning(f"采集{symbol}指数价格失败: {e}")
+        return self.index_price_cache.get(symbol, {})
+    
+    async def collect_liquidations(self, symbol: str, limit: int = 100) -> Dict[str, Any]:
+        """采集强平订单摘要"""
+        try:
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
+            liq_data = await self.okx_client.async_get_liquidation_orders(symbol, limit=limit)
+            long_total = 0.0
+            short_total = 0.0
+            largest = None
+            latest_ts = None
+            if liq_data and isinstance(liq_data, list):
+                for order in liq_data:
+                    try:
+                        price = float(order.get('fillPx', 0) or 0)
+                        size = abs(float(order.get('fillSz', 0) or 0))
+                        notional = price * size
+                    except Exception:
+                        continue
+                    pos_side = (order.get('posSide') or order.get('side') or '').lower()
+                    if pos_side == 'long':
+                        long_total += notional
+                    elif pos_side == 'short':
+                        short_total += notional
+                    else:
+                        # 无法判断时根据订单方向推断
+                        side = (order.get('side') or '').lower()
+                        if side == 'buy':
+                            short_total += notional
+                        elif side == 'sell':
+                            long_total += notional
+                        else:
+                            short_total += notional
+                    if not largest or notional > largest.get('notional', 0):
+                        largest = {
+                            'notional': notional,
+                            'side': pos_side or order.get('side'),
+                            'price': price,
+                            'timestamp': order.get('fillTime')
+                        }
+                    ts = order.get('fillTime')
+                    if ts and (latest_ts is None or ts > latest_ts):
+                        latest_ts = ts
+                summary = {
+                    'symbol': symbol,
+                    'long_volume': long_total,
+                    'short_volume': short_total,
+                    'net_volume': long_total - short_total,
+                    'largest_liquidation': largest,
+                    'last_update': latest_ts
+                }
+                self.liquidation_cache[symbol] = summary
+                return summary
+        except Exception as e:
+            self.logger.warning(f"采集{symbol}强平订单失败: {e}")
+        return self.liquidation_cache.get(symbol, {})
+    
+    async def collect_recent_trades(self, symbol: str, limit: int = 120) -> List[Dict[str, Any]]:
+        """采集最近成交明细"""
+        processed_trades: List[Dict[str, Any]] = []
+        try:
+            if self.okx_client is None:
+                self.okx_client = await get_okx_client()
+            trades = await self.okx_client.async_get_trades(symbol, limit=limit)
+            if trades and isinstance(trades, list):
+                for trade in trades:
+                    try:
+                        price = float(trade.get('px', 0) or 0)
+                        size = float(trade.get('sz', 0) or 0)
+                        side = trade.get('side', '').lower()
+                        processed_trades.append({
+                            'trade_id': trade.get('tradeId'),
+                            'price': price,
+                            'size': abs(size),
+                            'side': side,
+                            'notional': price * abs(size),
+                            'ts': int(trade.get('ts', 0) or 0)
+                        })
+                    except Exception:
+                        continue
+                self.trade_cache[symbol] = processed_trades
+                return processed_trades
+        except Exception as e:
+            self.logger.warning(f"采集{symbol}成交明细失败: {e}")
+        return self.trade_cache.get(symbol, [])
     
     async def collect_kline(self, symbol: str, interval: str = '1H', limit: int = 100) -> List[Dict[str, Any]]:
         """

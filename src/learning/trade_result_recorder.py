@@ -45,7 +45,10 @@ class TradeResultRecorder:
     
     def record_trade_decision(self, symbol: str, decision: Dict[str, Any],
                               ai_analysis: Dict[str, Any],
-                              market_data: Dict[str, Any]) -> str:
+                              market_data: Dict[str, Any],
+                              strategy_context: Optional[Dict[str, Any]] = None,
+                              session_tag: Optional[str] = None,
+                              volatility_regime: Optional[str] = None) -> str:
         """
         记录交易决策
         
@@ -85,6 +88,15 @@ class TradeResultRecorder:
                 'change_24h': market_data.get('change_24h', 0),
                 'indicators': market_data.get('indicators', {}),
                 'multi_timeframe': market_data.get('multi_timeframe', {}),
+                'orderflow': market_data.get('orderflow'),
+                'derivatives': market_data.get('derivatives'),
+                'impact': market_data.get('impact'),
+                'macro': market_data.get('macro'),
+            },
+            'strategy_context': strategy_context or {},
+            'context': {
+                'session_tag': session_tag,
+                'volatility_regime': volatility_regime
             },
             'status': 'open',  # open, closed, cancelled
             'result': None  # 将在平仓时更新
@@ -132,6 +144,19 @@ class TradeResultRecorder:
             'exit_timestamp': datetime.now().isoformat(),
             'is_profitable': profit_pct > 0
         }
+        # 记录一致性信息
+        fallback_info = (record.get('strategy_context') or {}).get('fallback', {})
+        record['consistency'] = {
+            'fallback_used': fallback_info.get('used'),
+            'fallback_reason': fallback_info.get('reason'),
+            'ai_recommendation': record.get('ai_analysis', {}).get('recommendation'),
+            'executed_action': record.get('decision', {}).get('action')
+        }
+        # 生成亏损复盘
+        if profit_pct <= 0:
+            loss_review = self._build_loss_review(record, profit_pct)
+            if loss_review:
+                record['loss_review'] = loss_review
         
         # 更新统计
         self._update_stats(profit_pct)
@@ -408,6 +433,29 @@ class TradeResultRecorder:
                 return str(obj)
             except Exception:
                 return None
+
+    def _build_loss_review(self, record: Dict[str, Any], profit_pct: float) -> Optional[Dict[str, Any]]:
+        """针对亏损交易生成结构化复盘"""
+        try:
+            market_conditions = record.get('market_conditions', {}) or {}
+            strategy_context = record.get('strategy_context', {}) or {}
+            return {
+                'summary': (
+                    f"亏损 {profit_pct:.2f}% | 原因: {record.get('result', {}).get('exit_reason', 'unknown')} | "
+                    f"会话: {record.get('context', {}).get('session_tag')}, 波动: {record.get('context', {}).get('volatility_regime')}"
+                ),
+                'macro_risk': market_conditions.get('macro'),
+                'orderflow_snapshot': market_conditions.get('orderflow'),
+                'impact_snapshot': market_conditions.get('impact'),
+                'risk_assessment': strategy_context.get('risk_assessment'),
+                'fallback': strategy_context.get('fallback'),
+                'key_factors': strategy_context.get('key_factors'),
+                'ai_recommendation': record.get('ai_analysis', {}).get('recommendation'),
+                'confidence': record.get('ai_analysis', {}).get('confidence')
+            }
+        except Exception as e:
+            self.logger.warning(f"生成亏损复盘失败: {e}")
+            return None
     
     def _save_record(self, record: Dict[str, Any]):
         """保存记录到文件"""

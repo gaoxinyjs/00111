@@ -4,10 +4,10 @@
 交易引擎
 整合数据采集、信号生成、决策、执行、风险管理的完整交易流程
 """
-
 import asyncio
+from copy import deepcopy
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
 from ..data.data_collector import DataCollector
@@ -33,6 +33,14 @@ class TradingEngine:
         self.logger = get_logger("trading_engine")
         
         # 初始化各个模块
+        trading_pairs_cfg = self.config_mgr.get_config('trading', 'trading_pairs') or []
+        self.pair_config_map = {
+            pair.get('symbol'): pair
+            for pair in trading_pairs_cfg
+            if pair.get('symbol')
+        }
+        self.orderflow_analysis_cfg = self.config_mgr.get_config('trading', 'orderflow_analysis', {}) or {}
+        self.macro_events_cfg = self.config_mgr.get_config('risk', 'macro_events', {}) or {}
         self.data_collector = DataCollector()
         self.data_processor = DataProcessor()
         self.signal_generator = SignalGenerator()
@@ -44,6 +52,8 @@ class TradingEngine:
         self.position_manager = PositionManager()
         self.profit_statistics = ProfitStatistics()
         self.okx_client = None  # 异步初始化
+        self._latest_market_data: Dict[str, Dict[str, Any]] = {}
+        self._latest_market_data_ts: Optional[datetime] = None
         
         # 多时间周期分析器
         from ..analysis.multi_timeframe_analyzer import MultiTimeframeAnalyzer
@@ -58,6 +68,10 @@ class TradingEngine:
         from ..learning.prompt_optimizer import PromptOptimizer
         self.result_recorder = TradeResultRecorder()
         self.prompt_optimizer = PromptOptimizer()
+        self.strategy_guidelines: List[Dict[str, Any]] = []
+        self._active_emphasis_factors: List[str] = []
+        self._active_caution_factors: List[str] = []
+        self._prompt_opt_running = False
         
         # 记录优化触发间隔（每10笔交易优化一次）
         self.optimization_interval = 10
@@ -206,6 +220,7 @@ class TradingEngine:
                 
                 # 2. 获取市场数据（包含多时间周期数据）
                 market_data = await self._collect_market_data()
+                self._update_market_data_cache(market_data)
                 
                 # 2.1. 多时间周期趋势分析和量价分析
                 multi_timeframe_analysis = self.multi_timeframe_analyzer.analyze_trends(market_data)
@@ -281,157 +296,40 @@ class TradingEngine:
         Returns:
             市场数据字典（按交易对索引）
         """
-        market_data = {}
+        market_data: Dict[str, Dict[str, Any]] = {}
         
         try:
-            # 获取所有交易对的数据
             trading_pairs = self.config_mgr.get_config('trading', 'trading_pairs')
             symbols_filter = set(symbols) if symbols else None
+            symbols_to_collect: List[str] = []
             
             for pair in trading_pairs:
                 if not pair.get('enabled', True):
                     continue
-                
                 symbol = pair.get('symbol')
                 if symbols_filter and symbol not in symbols_filter:
                     continue
-                
-                try:
-                    # 获取行情（异步）
-                    ticker = await self.data_collector.collect_ticker(symbol)
-                    
-                    # 获取多时间周期K线数据（15m, 1H, 4H）（异步）
-                    kline_15m = await self.data_collector.collect_kline(symbol, '15m', 100)
-                    kline_1h = await self.data_collector.collect_kline(symbol, '1H', 100)
-                    kline_4h = await self.data_collector.collect_kline(symbol, '4H', 100)
-                    
-                    # 主要使用15分钟进行技术指标计算
-                    kline = kline_15m
-                    
-                    # 计算技术指标
-                    if kline and isinstance(kline, list) and len(kline) > 0:
-                        try:
-                            df = self.data_processor.calculate_indicators(kline)
-                        except Exception as e:
-                            self.logger.error(f"计算{symbol}技术指标失败: {e}", exc_info=True)
-                            continue
-                        
-                        # 获取计算出的指标
-                        indicators_dict = df.iloc[-1].to_dict() if not df.empty else {}
-                        
-                        # 记录收集到的指标
-                        if indicators_dict:
-                            # 格式化指标值
-                            rsi_val = f"{indicators_dict.get('rsi', 'N/A'):.2f}" if isinstance(indicators_dict.get('rsi'), (int, float)) else str(indicators_dict.get('rsi', 'N/A'))
-                            macd_val = f"{indicators_dict.get('macd', 'N/A'):.4f}" if isinstance(indicators_dict.get('macd'), (int, float)) else str(indicators_dict.get('macd', 'N/A'))
-                            macd_hist_val = f"{indicators_dict.get('macd_hist', 'N/A'):.4f}" if isinstance(indicators_dict.get('macd_hist'), (int, float)) else str(indicators_dict.get('macd_hist', 'N/A'))
-                            bb_upper_val = f"{indicators_dict.get('bb_upper', 'N/A'):.2f}" if isinstance(indicators_dict.get('bb_upper'), (int, float)) else str(indicators_dict.get('bb_upper', 'N/A'))
-                            bb_lower_val = f"{indicators_dict.get('bb_lower', 'N/A'):.2f}" if isinstance(indicators_dict.get('bb_lower'), (int, float)) else str(indicators_dict.get('bb_lower', 'N/A'))
-                            
-                            self.logger.info(
-                                f"[指标汇总] 交易对: {symbol} | "
-                                f"价格: {ticker.get('price', 0)} | "
-                                f"24h涨跌: {ticker.get('change_24h', 0):.2f}% | "
-                                f"RSI: {rsi_val} | "
-                                f"MACD: {macd_val} | "
-                                f"MACD_Hist: {macd_hist_val} | "
-                                f"BB_Upper: {bb_upper_val} | "
-                                f"BB_Lower: {bb_lower_val}"
-                            )
-                            # 记录完整指标（DEBUG级别）
-                            self.logger.debug(f"[指标完整数据] 交易对: {symbol} - {indicators_dict}")
-                        
-                        # 收集订单簿数据（用于做市商意图分析）
-                        orderbook_data = {}
-                        try:
-                            orderbook = await self.data_collector.collect_orderbook(symbol, 20)
-                            if orderbook:
-                                bids = orderbook.get('bids', [])
-                                asks = orderbook.get('asks', [])
-                                # 计算买卖盘总量和比例
-                                bid_volume = sum([float(bid[1]) for bid in bids if len(bid) >= 2])
-                                ask_volume = sum([float(ask[1]) for ask in asks if len(ask) >= 2])
-                                bid_ask_ratio = bid_volume / ask_volume if ask_volume > 0 else 1.0
-                                
-                                orderbook_data = {
-                                    'bids': bids,
-                                    'asks': asks,
-                                    'spread': orderbook.get('spread', 0),
-                                    'bid_volume': bid_volume,
-                                    'ask_volume': ask_volume,
-                                    'bid_ask_ratio': bid_ask_ratio
-                                }
-                        except Exception as e:
-                            self.logger.warning(f"收集{symbol}订单簿数据失败: {e}")
-                        
-                        # 提取更详细的指标信息
-                        detailed_indicators = indicators_dict.copy()
-                        if df is not None and not df.empty:
-                            latest = df.iloc[-1]
-                            # 添加更多技术指标数据
-                            detailed_indicators['close'] = float(latest.get('close', 0))
-                            detailed_indicators['high'] = float(latest.get('high', 0))
-                            detailed_indicators['low'] = float(latest.get('low', 0))
-                            detailed_indicators['volume'] = float(latest.get('volume', 0))
-                            # 添加均线数据
-                            if 'ma_5' in latest:
-                                detailed_indicators['ma_5'] = float(latest.get('ma_5', 0))
-                            if 'ma_20' in latest:
-                                detailed_indicators['ma_20'] = float(latest.get('ma_20', 0))
-                            if 'ma_60' in latest:
-                                detailed_indicators['ma_60'] = float(latest.get('ma_60', 0))
-                            # 添加成交量指标
-                            if 'volume_ma_5' in latest:
-                                detailed_indicators['volume_ma_5'] = float(latest.get('volume_ma_5', 0))
-                            if 'volume_ma_20' in latest:
-                                detailed_indicators['volume_ma_20'] = float(latest.get('volume_ma_20', 0))
-                            
-                            # 计算最近几根K线的价格趋势
-                            if len(df) >= 5:
-                                recent_5 = df.iloc[-5:]
-                                price_change_5 = ((recent_5['close'].iloc[-1] - recent_5['close'].iloc[0]) / recent_5['close'].iloc[0] * 100) if recent_5['close'].iloc[0] > 0 else 0
-                                detailed_indicators['price_change_5k'] = price_change_5
-                            
-                            if len(df) >= 10:
-                                recent_10 = df.iloc[-10:]
-                                price_change_10 = ((recent_10['close'].iloc[-1] - recent_10['close'].iloc[0]) / recent_10['close'].iloc[0] * 100) if recent_10['close'].iloc[0] > 0 else 0
-                                detailed_indicators['price_change_10k'] = price_change_10
-                        
-                        # 准备市场数据（包含多时间周期数据、订单簿数据）
-                        symbol_market_data = {
-                            'symbol': symbol,
-                            'price': ticker.get('price', 0),
-                            'change_24h': ticker.get('change_24h', 0),
-                            'volume_24h': ticker.get('volume_24h', 0),
-                            'high_24h': ticker.get('high_24h', 0),
-                            'low_24h': ticker.get('low_24h', 0),
-                            'kline_15m': kline_15m,  # 15分钟K线
-                            'kline_1H': kline_1h,  # 1小时K线
-                            'kline_4H': kline_4h,  # 4小时K线
-                            'kline': kline,  # 15分钟K线（用于量价分析）
-                            'indicators': detailed_indicators,
-                            'orderbook': orderbook_data,  # 订单簿数据（用于做市商意图分析）
-                            'funding': {},  # 资金面数据（需要从其他地方获取）
-                            'chain': {},  # 链上数据（需要从其他地方获取）
-                            'sentiment': {}  # 情绪数据（需要从其他地方获取）
-                        }
-                        
-                        # 保存到缓存（用于自学习）
-                        if not hasattr(self, 'market_data_cache'):
-                            self.market_data_cache = {}
-                        self.market_data_cache[symbol] = symbol_market_data.copy()
-                        
-                        # 保存到market_data字典
-                        market_data[symbol] = symbol_market_data.copy()
-                    
-                    # 避免API限流
-                    await asyncio.sleep(0.1)
-                
-                except Exception as e:
-                    self.logger.error(f"收集{symbol}市场数据失败: {e}")
+                symbols_to_collect.append(symbol)
+            
+            if not symbols_to_collect:
+                return market_data
+            
+            tasks = [self._collect_symbol_market_data(symbol) for symbol in symbols_to_collect]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            collected_symbols = set()
+            for symbol, result in zip(symbols_to_collect, results):
+                if isinstance(result, Exception):
+                    self.logger.error(f"收集{symbol}市场数据失败: {result}")
+                    continue
+                if not result:
+                    continue
+                market_data[symbol] = result
+                self.market_data_cache[symbol] = result.copy()
+                collected_symbols.add(symbol)
             
             if symbols_filter:
-                missing_symbols = symbols_filter - set(market_data.keys())
+                missing_symbols = symbols_filter - collected_symbols
                 for symbol in missing_symbols:
                     self.logger.warning(f"请求的交易对{symbol}未在交易配置中找到或数据收集失败")
         
@@ -439,6 +337,606 @@ class TradingEngine:
             self.logger.error(f"收集市场数据失败: {e}")
         
         return market_data
+    
+    def _update_market_data_cache(self, market_data: Dict[str, Dict[str, Any]],
+                                  symbols: Optional[List[str]] = None):
+        """更新市场数据缓存"""
+        if not market_data:
+            return
+        now = datetime.now()
+        if symbols:
+            if not self._latest_market_data:
+                self._latest_market_data = {}
+            for symbol in symbols:
+                if symbol in market_data:
+                    self._latest_market_data[symbol] = deepcopy(market_data[symbol])
+        else:
+            self._latest_market_data = deepcopy(market_data)
+        self._latest_market_data_ts = now
+    
+    def _get_cached_market_data(self, symbols: Optional[List[str]] = None,
+                                max_age_seconds: int = 5) -> Optional[Dict[str, Dict[str, Any]]]:
+        """在允许的时间窗内返回缓存的市场数据"""
+        if not self._latest_market_data_ts:
+            return None
+        age = (datetime.now() - self._latest_market_data_ts).total_seconds()
+        if age > max_age_seconds:
+            return None
+        if symbols:
+            if any(symbol not in self._latest_market_data for symbol in symbols):
+                return None
+            return deepcopy({symbol: self._latest_market_data[symbol] for symbol in symbols})
+        return deepcopy(self._latest_market_data)
+
+    def _derive_session_tag(self, current_time: Optional[datetime] = None) -> str:
+        """根据UTC时间估算交易会话"""
+        now = current_time or datetime.utcnow()
+        hour = now.hour
+        if 0 <= hour < 8:
+            return 'asia'
+        if 8 <= hour < 16:
+            return 'europe'
+        return 'us'
+    
+    def _derive_volatility_regime(self, market_data: Dict[str, Any]) -> str:
+        """根据波动率指标估算市场状态"""
+        indicators = (market_data or {}).get('indicators', {}) or {}
+        volatility = indicators.get('volatility')
+        try:
+            vol_value = float(str(volatility).replace('%', ''))
+            if vol_value < 2:
+                return 'low'
+            if vol_value < 4:
+                return 'medium'
+            return 'high'
+        except (ValueError, TypeError):
+            return 'unknown'
+    
+    def _build_strategy_context(self, decision, ai_analysis: Dict[str, Any],
+                                market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """构建用于自学习的策略快照"""
+        ai_analysis = ai_analysis or {}
+        multi_timeframe = (market_data or {}).get('multi_timeframe', {}) or {}
+        fallback_meta = getattr(decision, '_fallback', {})
+        context = {
+            'position': {
+                'size': decision.position_size,
+                'side': decision.position_side,
+                'stop_loss': decision.stop_loss,
+                'take_profit': decision.take_profit
+            },
+            'risk_assessment': decision.risk_assessment,
+            'signals': decision.signals,
+            'fallback': fallback_meta,
+            'entry_timing': multi_timeframe.get('entry_timing'),
+            'multi_timeframe': multi_timeframe,
+            'ai_confidence': ai_analysis.get('confidence'),
+            'ai_recommendation': ai_analysis.get('recommendation'),
+            'key_factors': ai_analysis.get('key_factors')
+        }
+        return context
+    
+    def _get_prompt_optimization_threshold(self) -> int:
+        """根据近期表现动态设定触发优化所需的交易数量"""
+        base_threshold = self.optimization_interval
+        try:
+            stats = self.result_recorder.get_performance_stats()
+            win_rate = stats.get('win_rate', 0) or 0
+            total_trades = stats.get('total_trades', 0) or 0
+            if total_trades >= 5 and win_rate < 40:
+                base_threshold = max(5, int(self.optimization_interval * 0.8))
+            elif total_trades >= 10 and win_rate > 60:
+                base_threshold = int(self.optimization_interval * 1.5)
+        except Exception as e:
+            self.logger.debug(f"计算提示词优化阈值失败: {e}")
+        return max(5, base_threshold)
+    
+    def _schedule_prompt_optimization(self):
+        """在达到条件时异步触发提示词优化"""
+        if self._prompt_opt_running:
+            return
+        threshold = self._get_prompt_optimization_threshold()
+        if self.trade_count_since_optimization < threshold:
+            return
+        if not self.prompt_optimizer:
+            return
+        self._prompt_opt_running = True
+        asyncio.create_task(self._run_prompt_optimization(threshold))
+    
+    async def _run_prompt_optimization(self, min_trades: int):
+        """后台执行提示词优化并应用指导原则"""
+        try:
+            self.logger.info(f"[自学习] 达到{min_trades}笔交易，启动提示词优化")
+            optimized_prompt = await asyncio.to_thread(self.prompt_optimizer.optimize_prompt, min_trades)
+            if optimized_prompt:
+                guidelines = self.prompt_optimizer.get_current_guidelines()
+                self.logger.info(
+                    f"[自学习] 提示词优化完成，版本: {optimized_prompt.get('version')}, "
+                    f"指导原则数: {len(guidelines)}"
+                )
+                self._apply_guidelines_to_strategy(guidelines)
+                self.trade_count_since_optimization = 0
+            else:
+                self.logger.info("[自学习] 本轮无可用优化建议")
+        except Exception as e:
+            self.logger.error(f"[自学习] 提示词优化失败: {e}")
+        finally:
+            self._prompt_opt_running = False
+    
+    def _apply_guidelines_to_strategy(self, guidelines: List[Dict[str, Any]]):
+        """将提示词指导原则反馈至策略与决策引擎"""
+        self.strategy_guidelines = guidelines or []
+        confidence_applied = False
+        self._active_emphasis_factors = []
+        self._active_caution_factors = []
+        
+        for guideline in self.strategy_guidelines:
+            gtype = guideline.get('type')
+            if gtype == 'confidence_threshold':
+                value = guideline.get('value')
+                try:
+                    threshold = float(value)
+                    self.decision_engine.set_confidence_override(threshold)
+                    self.min_confidence = max(self.min_confidence, threshold)
+                    confidence_applied = True
+                    self.logger.info(f"[自学习] 应用AI信心度下限: {threshold:.2f}")
+                except (TypeError, ValueError):
+                    self.logger.warning(f"[自学习] 无法解析信心度指导: {value}")
+            elif gtype == 'emphasis':
+                self._active_emphasis_factors = guideline.get('factors', []) or []
+                self.logger.info(f"[自学习] 重点关注因子: {', '.join(self._active_emphasis_factors)}")
+            elif gtype == 'deemphasis':
+                self._active_caution_factors = guideline.get('factors', []) or []
+                self.logger.info(f"[自学习] 谨慎因子: {', '.join(self._active_caution_factors)}")
+        
+        if not confidence_applied:
+            self.decision_engine.set_confidence_override(None)
+
+    async def _collect_symbol_market_data(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """并发采集单个交易对的行情、K线、指标与订单簿"""
+        try:
+            ticker = await self.data_collector.collect_ticker(symbol)
+        except Exception as e:
+            self.logger.error(f"收集{symbol}行情失败: {e}")
+            return None
+        
+        try:
+            kline_15m, kline_1h, kline_4h = await asyncio.gather(
+                self.data_collector.collect_kline(symbol, '15m', 100),
+                self.data_collector.collect_kline(symbol, '1H', 100),
+                self.data_collector.collect_kline(symbol, '4H', 100)
+            )
+        except Exception as e:
+            self.logger.error(f"收集{symbol}K线数据失败: {e}")
+            return None
+        
+        orderbook_data: Dict[str, Any] = {}
+        funding_data: Dict[str, Any] = {}
+        open_interest_data: Dict[str, Any] = {}
+        taker_volume_data: Dict[str, Any] = {}
+        long_short_ratio_data: Dict[str, Any] = {}
+        recent_trades: List[Dict[str, Any]] = []
+        orderflow_metrics: Dict[str, Any] = {}
+        
+        try:
+            (
+                orderbook_result,
+                funding_result,
+                oi_result,
+                taker_volume_result,
+                long_short_result,
+                trades_result,
+                mark_price_result,
+                index_price_result,
+                liquidation_result
+            ) = await asyncio.gather(
+                self.data_collector.collect_orderbook(symbol, 20),
+                self.data_collector.collect_funding_rate(symbol),
+                self.data_collector.collect_open_interest(symbol),
+                self.data_collector.collect_taker_volume(symbol),
+                self.data_collector.collect_long_short_ratio(symbol),
+                self.data_collector.collect_recent_trades(symbol, 120),
+                self.data_collector.collect_mark_price(symbol),
+                self.data_collector.collect_index_price(symbol),
+                self.data_collector.collect_liquidations(symbol),
+                return_exceptions=True
+            )
+        except Exception as gather_error:
+            self.logger.warning(f"{symbol}: 批量采集前瞻指标失败: {gather_error}", exc_info=True)
+            orderbook_result = funding_result = oi_result = taker_volume_result = long_short_result = trades_result = None
+        
+        if isinstance(orderbook_result, Exception):
+            self.logger.warning(f"{symbol}: 订单簿采集出错: {orderbook_result}")
+            orderbook_result = None
+        if isinstance(funding_result, Exception):
+            self.logger.warning(f"{symbol}: 资金费率采集出错: {funding_result}")
+            funding_result = None
+        if isinstance(oi_result, Exception):
+            self.logger.warning(f"{symbol}: 未平仓量采集出错: {oi_result}")
+            oi_result = None
+        if isinstance(taker_volume_result, Exception):
+            self.logger.warning(f"{symbol}: 主动买卖量采集出错: {taker_volume_result}")
+            taker_volume_result = None
+        if isinstance(long_short_result, Exception):
+            self.logger.warning(f"{symbol}: 多空账户占比采集出错: {long_short_result}")
+            long_short_result = None
+        if isinstance(trades_result, Exception):
+            self.logger.warning(f"{symbol}: 成交明细采集出错: {trades_result}")
+            trades_result = None
+        if isinstance(mark_price_result, Exception):
+            self.logger.warning(f"{symbol}: 标记价格采集出错: {mark_price_result}")
+            mark_price_result = None
+        if isinstance(index_price_result, Exception):
+            self.logger.warning(f"{symbol}: 指数价格采集出错: {index_price_result}")
+            index_price_result = None
+        if isinstance(liquidation_result, Exception):
+            self.logger.warning(f"{symbol}: 强平订单采集出错: {liquidation_result}")
+            liquidation_result = None
+        
+        orderbook = orderbook_result if isinstance(orderbook_result, dict) else None
+        if orderbook:
+            bids = orderbook.get('bids', [])
+            asks = orderbook.get('asks', [])
+            bid_volume = sum(float(bid[1]) for bid in bids if len(bid) >= 2)
+            ask_volume = sum(float(ask[1]) for ask in asks if len(ask) >= 2)
+            depth_levels = min(5, len(bids), len(asks))
+            near_bid_volume = sum(float(bids[i][1]) for i in range(depth_levels)) if depth_levels > 0 else bid_volume
+            near_ask_volume = sum(float(asks[i][1]) for i in range(depth_levels)) if depth_levels > 0 else ask_volume
+            bid_ask_ratio = bid_volume / ask_volume if ask_volume > 0 else 1.0
+            imbalance = (bid_volume - ask_volume) / (bid_volume + ask_volume) if (bid_volume + ask_volume) > 0 else 0
+            orderbook_data = {
+                'bids': bids,
+                'asks': asks,
+                'spread': orderbook.get('spread', 0),
+                'bid_volume': bid_volume,
+                'ask_volume': ask_volume,
+                'bid_ask_ratio': bid_ask_ratio,
+                'imbalance': imbalance,
+                'near_bid_volume': near_bid_volume,
+                'near_ask_volume': near_ask_volume,
+                'top_depth_levels': depth_levels
+            }
+        
+        if isinstance(funding_result, dict):
+            funding_data = funding_result
+        if isinstance(oi_result, dict):
+            open_interest_data = oi_result
+        if isinstance(taker_volume_result, dict):
+            taker_volume_data = taker_volume_result
+        if isinstance(long_short_result, dict):
+            long_short_ratio_data = long_short_result
+        if isinstance(trades_result, list):
+            recent_trades = trades_result
+        
+        impact_metrics: Dict[str, Any] = {}
+        block_trades_summary: Dict[str, Any] = {}
+        basis_data: Dict[str, Any] = {}
+        liquidation_data: Dict[str, Any] = {}
+        
+        if recent_trades:
+            buy_notional = sum(trade['notional'] for trade in recent_trades if trade.get('side') == 'buy')
+            sell_notional = sum(trade['notional'] for trade in recent_trades if trade.get('side') == 'sell')
+            total_notional = buy_notional + sell_notional
+            buy_volume = sum(trade['size'] for trade in recent_trades if trade.get('side') == 'buy')
+            sell_volume = sum(trade['size'] for trade in recent_trades if trade.get('side') == 'sell')
+            timestamps = [trade['ts'] for trade in recent_trades if trade.get('ts')]
+            if timestamps:
+                span_ms = max(timestamps) - min(timestamps) if len(timestamps) > 1 else 1000
+            else:
+                span_ms = 1000
+            trades_per_sec = len(recent_trades) / max(span_ms / 1000, 1)
+            avg_trade_size = (buy_volume + sell_volume) / len(recent_trades)
+            orderflow_metrics = {
+                'taker_buy_notional': buy_notional,
+                'taker_sell_notional': sell_notional,
+                'taker_buy_ratio': buy_notional / total_notional if total_notional > 0 else None,
+                'net_flow': buy_notional - sell_notional,
+                'buy_volume': buy_volume,
+                'sell_volume': sell_volume,
+                'avg_trade_size': avg_trade_size,
+                'trades_per_sec': trades_per_sec,
+                'sample_size': len(recent_trades),
+                'latest_trade': recent_trades[0] if recent_trades else None
+            }
+            if not taker_volume_data:
+                taker_volume_data = {
+                    'symbol': symbol,
+                    'period': 'recent_trades',
+                    'buy_vol': buy_volume,
+                    'sell_vol': sell_volume,
+                    'taker_buy_ratio': orderflow_metrics['taker_buy_ratio'],
+                    'timestamp': recent_trades[0].get('ts') if recent_trades else None
+                }
+            block_threshold = float(self.orderflow_analysis_cfg.get('block_trade_notional', 80000) or 0)
+            block_window = int(self.orderflow_analysis_cfg.get('block_trade_window_sec', 180) or 0)
+            block_trades_summary = self._summarize_block_trades(recent_trades, block_threshold, block_window)
+            if block_trades_summary:
+                orderflow_metrics['block_trades'] = block_trades_summary
+        
+        mid_price = float(ticker.get('price', 0) or 0)
+        impact_notional = float(self.orderflow_analysis_cfg.get('impact_notional', 50000) or 0)
+        if orderbook_data and impact_notional > 0 and mid_price > 0:
+            impact_metrics = self._calculate_market_impact(orderbook_data, impact_notional, mid_price)
+        
+        mark_price = None
+        if isinstance(mark_price_result, dict) and mark_price_result:
+            mark_price = float(mark_price_result.get('mark_price', 0) or 0)
+        index_price = None
+        if isinstance(index_price_result, dict) and index_price_result:
+            index_price = float(index_price_result.get('index_price', 0) or 0)
+        if (mark_price and mark_price > 0) or (index_price and index_price > 0):
+            spot_basis_pct = ((mid_price - index_price) / index_price) if index_price and index_price > 0 else None
+            mark_basis_pct = ((mark_price - index_price) / index_price) if index_price and index_price > 0 and mark_price else None
+            premium_pct = ((mid_price - mark_price) / mark_price) if mark_price else None
+            basis_data = {
+                'mark_price': mark_price,
+                'index_price': index_price,
+                'spot_basis_pct': spot_basis_pct,
+                'mark_basis_pct': mark_basis_pct,
+                'premium_pct': premium_pct,
+                'timestamp': (mark_price_result or {}).get('timestamp') or (index_price_result or {}).get('timestamp')
+            }
+            current_rate = funding_data.get('current_rate') if isinstance(funding_data, dict) else None
+            if current_rate is not None:
+                try:
+                    annualized = float(current_rate) * 3 * 365  # 8小时=3次/天
+                    basis_data['funding_annualized_pct'] = annualized
+                except (TypeError, ValueError):
+                    pass
+        
+        if isinstance(liquidation_result, dict):
+            liquidation_data = liquidation_result
+        
+        macro_risk = self._evaluate_macro_risk(symbol)
+        
+        kline = kline_15m
+        indicators_dict: Dict[str, Any] = {}
+        df = None
+        if kline and isinstance(kline, list) and len(kline) > 0:
+            try:
+                df = self.data_processor.calculate_indicators(kline)
+                if df is not None and not df.empty:
+                    indicators_dict = df.iloc[-1].to_dict()
+            except Exception as e:
+                self.logger.error(f"计算{symbol}技术指标失败: {e}", exc_info=True)
+                indicators_dict = {}
+        
+        if indicators_dict:
+            def _fmt(value, fmt_str="{:.2f}"):
+                return fmt_str.format(value) if isinstance(value, (int, float)) else str(value)
+            self.logger.info(
+                f"[指标汇总] 交易对: {symbol} | "
+                f"价格: {ticker.get('price', 0)} | "
+                f"24h涨跌: {ticker.get('change_24h', 0):.2f}% | "
+                f"RSI: {_fmt(indicators_dict.get('rsi'), '{:.2f}')} | "
+                f"MACD: {_fmt(indicators_dict.get('macd'), '{:.4f}')} | "
+                f"MACD_Hist: {_fmt(indicators_dict.get('macd_hist'), '{:.4f}')} | "
+                f"BB_Upper: {_fmt(indicators_dict.get('bb_upper'), '{:.2f}')} | "
+                f"BB_Lower: {_fmt(indicators_dict.get('bb_lower'), '{:.2f}')}"
+            )
+            self.logger.debug(f"[指标完整数据] 交易对: {symbol} - {indicators_dict}")
+        
+        detailed_indicators = indicators_dict.copy()
+        if df is not None and not df.empty:
+            latest = df.iloc[-1]
+            detailed_indicators['close'] = float(latest.get('close', 0))
+            detailed_indicators['high'] = float(latest.get('high', 0))
+            detailed_indicators['low'] = float(latest.get('low', 0))
+            detailed_indicators['volume'] = float(latest.get('volume', 0))
+            for key in ['ma_5', 'ma_20', 'ma_60']:
+                if key in latest:
+                    detailed_indicators[key] = float(latest.get(key, 0))
+            if 'volume_ma_5' in latest:
+                detailed_indicators['volume_ma_5'] = float(latest.get('volume_ma_5', 0))
+            if 'volume_ma_20' in latest:
+                detailed_indicators['volume_ma_20'] = float(latest.get('volume_ma_20', 0))
+            if len(df) >= 5:
+                recent_5 = df.iloc[-5:]
+                price_change_5 = ((recent_5['close'].iloc[-1] - recent_5['close'].iloc[0]) / recent_5['close'].iloc[0] * 100) if recent_5['close'].iloc[0] > 0 else 0
+                detailed_indicators['price_change_5k'] = price_change_5
+            if len(df) >= 10:
+                recent_10 = df.iloc[-10:]
+                price_change_10 = ((recent_10['close'].iloc[-1] - recent_10['close'].iloc[0]) / recent_10['close'].iloc[0] * 100) if recent_10['close'].iloc[0] > 0 else 0
+                detailed_indicators['price_change_10k'] = price_change_10
+        
+        primary_taker_ratio = orderflow_metrics.get('taker_buy_ratio')
+        if primary_taker_ratio is None:
+            primary_taker_ratio = taker_volume_data.get('taker_buy_ratio')
+        
+        sentiment_label = None
+        if primary_taker_ratio is not None:
+            if primary_taker_ratio > 0.6:
+                sentiment_label = 'strong_buy_flow'
+            elif primary_taker_ratio < 0.4:
+                sentiment_label = 'strong_sell_flow'
+            else:
+                sentiment_label = 'neutral_flow'
+        
+        sentiment_data = {
+            'funding_rate': funding_data.get('current_rate'),
+            'next_funding_rate': funding_data.get('next_rate'),
+            'taker_buy_ratio': primary_taker_ratio,
+            'orderbook_imbalance': orderbook_data.get('imbalance') if orderbook_data else None,
+            'long_short_ratio': long_short_ratio_data.get('long_short_ratio'),
+            'macro_risk': macro_risk.get('risk_level'),
+            'block_trades': block_trades_summary,
+            'label': sentiment_label
+        }
+        
+        symbol_market_data = {
+            'symbol': symbol,
+            'price': ticker.get('price', 0),
+            'change_24h': ticker.get('change_24h', 0),
+            'volume_24h': ticker.get('volume_24h', 0),
+            'high_24h': ticker.get('high_24h', 0),
+            'low_24h': ticker.get('low_24h', 0),
+            'kline_15m': kline_15m,
+            'kline_1H': kline_1h,
+            'kline_4H': kline_4h,
+            'kline': kline,
+            'indicators': detailed_indicators,
+            'orderbook': orderbook_data,
+            'impact': impact_metrics,
+            'funding': funding_data,
+            'derivatives': {
+                'open_interest': open_interest_data,
+                'taker_volume': taker_volume_data,
+                'long_short_ratio': long_short_ratio_data,
+                'liquidations': liquidation_data,
+                'basis': basis_data
+            },
+            'orderflow': orderflow_metrics,
+            'chain': {},
+            'sentiment': sentiment_data,
+            'macro': macro_risk,
+            'pair_config': self.pair_config_map.get(symbol, {})
+        }
+        return symbol_market_data
+    
+    def _calculate_market_impact(self, orderbook: Dict[str, Any], target_notional: float, mid_price: float) -> Dict[str, Any]:
+        """估算吃掉指定名义金额时的冲击成本"""
+        def _calc(levels: List[List[float]], direction: str) -> Dict[str, Any]:
+            remaining = target_notional
+            total_notional = 0.0
+            total_qty = 0.0
+            worst_price = mid_price
+            for level in levels:
+                if len(level) < 2:
+                    continue
+                price = float(level[0])
+                size = abs(float(level[1]))
+                level_notional = price * size
+                if level_notional <= 0:
+                    continue
+                take = min(level_notional, remaining)
+                if take <= 0:
+                    break
+                worst_price = price
+                total_notional += take
+                total_qty += take / price if price > 0 else 0
+                remaining -= take
+                if remaining <= 0:
+                    break
+            filled_ratio = total_notional / target_notional if target_notional > 0 else 0
+            impact_pct = None
+            if total_notional > 0 and mid_price > 0:
+                move_pct = (worst_price - mid_price) / mid_price
+                impact_pct = move_pct if direction == 'buy' else -move_pct
+            return {
+                'filled_ratio': filled_ratio,
+                'worst_price': worst_price if total_notional > 0 else None,
+                'avg_price': (total_notional / total_qty) if total_qty > 0 else None,
+                'impact_pct': impact_pct
+            }
+        
+        bids = orderbook.get('bids', []) if orderbook else []
+        asks = orderbook.get('asks', []) if orderbook else []
+        return {
+            'impact_notional': target_notional,
+            'buy': _calc(asks, 'buy'),
+            'sell': _calc(bids, 'sell')
+        }
+    
+    def _summarize_block_trades(self, trades: List[Dict[str, Any]], threshold: float, window_sec: int) -> Dict[str, Any]:
+        """统计大额成交簇"""
+        if not trades or threshold <= 0:
+            return {}
+        block_trades = [trade for trade in trades if trade.get('notional', 0) >= threshold]
+        if not block_trades:
+            return {}
+        sorted_blocks = sorted(block_trades, key=lambda t: t.get('ts', 0) or 0, reverse=True)
+        latest_ts = sorted_blocks[0].get('ts')
+        window_ms = window_sec * 1000 if window_sec else None
+        if window_ms and latest_ts:
+            window_blocks = [
+                trade for trade in sorted_blocks
+                if trade.get('ts') and (latest_ts - trade['ts']) <= window_ms
+            ]
+        else:
+            window_blocks = sorted_blocks
+        buy_count = sum(1 for trade in window_blocks if trade.get('side') == 'buy')
+        sell_count = sum(1 for trade in window_blocks if trade.get('side') == 'sell')
+        net_notional = 0.0
+        for trade in window_blocks:
+            notional = trade.get('notional', 0.0)
+            if trade.get('side') == 'buy':
+                net_notional += notional
+            elif trade.get('side') == 'sell':
+                net_notional -= notional
+        latest_trade = sorted_blocks[0]
+        bias = 'buy' if net_notional > 0 else 'sell' if net_notional < 0 else 'neutral'
+        return {
+            'count': len(window_blocks),
+            'buy_count': buy_count,
+            'sell_count': sell_count,
+            'net_notional': net_notional,
+            'last_trade': latest_trade,
+            'bias': bias,
+            'threshold': threshold
+        }
+    
+    def _parse_iso_datetime(self, value: Optional[Any]) -> Optional[datetime]:
+        """解析ISO或毫秒时间戳"""
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            try:
+                return datetime.fromtimestamp(float(value) / 1000.0, tz=timezone.utc)
+            except (TypeError, ValueError, OSError):
+                return None
+        if isinstance(value, str):
+            try:
+                if value.endswith('Z'):
+                    value = value.replace('Z', '+00:00')
+                parsed = datetime.fromisoformat(value)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                return parsed.astimezone(timezone.utc)
+            except ValueError:
+                return None
+        return None
+    
+    def _evaluate_macro_risk(self, symbol: str) -> Dict[str, Any]:
+        """基于配置计算当前宏观风险"""
+        macro_cfg = self.macro_events_cfg or self.config_mgr.get_config('risk', 'macro_events', {})
+        if not macro_cfg or not macro_cfg.get('enabled', True):
+            return {'risk_level': 'normal', 'active_events': []}
+        now = datetime.now(timezone.utc)
+        events = macro_cfg.get('events', []) or []
+        risk_levels = macro_cfg.get('risk_levels', {}) or {}
+        default_level = macro_cfg.get('default_level', 'normal')
+        highest_level = default_level
+        active_events: List[Dict[str, Any]] = []
+        cumulative_score = risk_levels.get(default_level, 0.0)
+        
+        for event in events:
+            start = self._parse_iso_datetime(event.get('start'))
+            end = self._parse_iso_datetime(event.get('end'))
+            if start and now < start:
+                continue
+            if end and now > end:
+                continue
+            symbols = event.get('symbols')
+            if symbols and symbol not in symbols:
+                continue
+            level = (event.get('level') or 'medium').lower()
+            active_events.append({
+                'name': event.get('name'),
+                'level': level,
+                'note': event.get('note'),
+                'start': event.get('start'),
+                'end': event.get('end')
+            })
+            cumulative_score += risk_levels.get(level, 0.0)
+            if risk_levels.get(level, 0.0) >= risk_levels.get(highest_level, 0.0):
+                highest_level = level
+        
+        return {
+            'risk_level': highest_level,
+            'score': cumulative_score,
+            'active_events': active_events,
+            'evaluated_at': now.isoformat()
+        }
     
     async def _generate_signals(self, market_data: Dict[str, Dict[str, Any]]) -> List:
         """
@@ -656,6 +1154,9 @@ class TradingEngine:
                 
                 # 记录交易决策（开仓时）
                 if not self._is_closing_position(symbol, decision.action):
+                    strategy_context = self._build_strategy_context(decision, ai_analysis, symbol_market_data)
+                    session_tag = self._derive_session_tag()
+                    volatility_regime = self._derive_volatility_regime(symbol_market_data)
                     # 这是开仓，记录决策
                     record_id = self.result_recorder.record_trade_decision(
                         symbol=symbol,
@@ -666,7 +1167,10 @@ class TradingEngine:
                             'confidence': decision.confidence,
                         },
                         ai_analysis=ai_analysis,
-                        market_data=symbol_market_data
+                        market_data=symbol_market_data,
+                        strategy_context=strategy_context,
+                        session_tag=session_tag,
+                        volatility_regime=volatility_regime
                     )
                     # 将record_id保存到决策中，以便平仓时使用
                     decision._record_id = record_id
@@ -975,8 +1479,18 @@ class TradingEngine:
                         
                         # 获取快速止损止盈配置（账户盈亏百分比）
                         trading_config = self.config_mgr.get_config('trading', 'auto_trading', {})
-                        quick_profit_target = trading_config.get('quick_profit_target', 0.05) * 100  # 账户盈亏5%
-                        quick_stop_loss = trading_config.get('quick_stop_loss', 0.015) * 100  # 账户盈亏1.5%
+                        risk_limits_cfg = self.config_mgr.get_config('risk', 'risk_limits', {}) or {}
+                        max_loss_per_trade = risk_limits_cfg.get('max_loss_per_trade')
+                        quick_stop_loss_ratio = trading_config.get('quick_stop_loss', max_loss_per_trade or 0.02)
+                        if max_loss_per_trade:
+                            quick_stop_loss_ratio = max_loss_per_trade
+                        quick_profit_target_ratio = trading_config.get('quick_profit_target')
+                        if quick_profit_target_ratio is None:
+                            quick_profit_target_ratio = quick_stop_loss_ratio * 2
+                        if quick_profit_target_ratio < quick_stop_loss_ratio * 1.5:
+                            quick_profit_target_ratio = quick_stop_loss_ratio * 2
+                        quick_profit_target = quick_profit_target_ratio * 100
+                        quick_stop_loss = quick_stop_loss_ratio * 100
                         
                         # ⚠️ 优先检查快速止损（保护资金）- 这是最重要的检查！
                         # 使用账户盈亏百分比进行比较
@@ -1461,6 +1975,7 @@ class TradingEngine:
                         try:
                             # 获取最新市场数据
                             latest_market_data = await self._collect_market_data()
+                            self._update_market_data_cache(latest_market_data)
                             symbol_market_data = latest_market_data.get(symbol, {})
                             
                             if symbol_market_data:
@@ -1514,7 +2029,10 @@ class TradingEngine:
                 
                 # 获取市场数据
                 try:
-                    market_data = await self._collect_market_data()
+                    market_data = self._get_cached_market_data(max_age_seconds=5)
+                    if market_data is None:
+                        market_data = await self._collect_market_data()
+                        self._update_market_data_cache(market_data)
                     if market_data:
                         # 执行快速止损检查
                         await self._check_position_adjustments(
@@ -1555,7 +2073,14 @@ class TradingEngine:
                     if not symbols:
                         self.logger.debug("[AI仓位审查] 当前无持仓，跳过本次检查")
                     else:
-                        market_data = await self._collect_market_data(symbols)
+                        market_data = self._get_cached_market_data(
+                            symbols=symbols,
+                            max_age_seconds=max(5, self.ai_review_interval)
+                        )
+                        if market_data is None:
+                            market_data = await self._collect_market_data(symbols)
+                            if market_data:
+                                self._update_market_data_cache(market_data, symbols=list(market_data.keys()))
                         if market_data:
                             await self._check_position_adjustments(
                                 market_data,
@@ -1673,6 +2198,7 @@ class TradingEngine:
                     try:
                         # 获取最新市场数据
                         latest_market_data = await self._collect_market_data()
+                        self._update_market_data_cache(latest_market_data)
                         symbol_market_data = latest_market_data.get(symbol, {})
                         
                         if not symbol_market_data:
@@ -1859,6 +2385,8 @@ class TradingEngine:
                         holding_duration_hours=holding_hours,
                         exit_reason=exit_reason
                     )
+                    self.trade_count_since_optimization += 1
+                    self._schedule_prompt_optimization()
                 except Exception as err:
                     self.logger.error(f"写入交易结果失败 {symbol}: {err}")
             

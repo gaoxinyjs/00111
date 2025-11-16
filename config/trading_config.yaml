@@ -8,6 +8,32 @@ trading_pairs:
     size_precision: 2  # SOL数量精度
     leverage: 5  # 杠杆倍数（1-125）- 调低到5倍以降低噪声放大
     max_position: 1.0  # 最大持仓（1倍合约面值）
+    min_confidence: 0.6
+    position:
+      base: 0.05
+      max: 0.12
+      min: 0.01
+    fallback_multipliers:
+      ai_hold: 0.6
+      ai_no_direction: 0.5
+      ai_low_confidence: 0.4
+
+  - symbol: "ETH-USDT-SWAP"
+    enabled: true
+    min_order_size: 0.001
+    price_precision: 2
+    size_precision: 3
+    leverage: 4
+    max_position: 2.0
+    min_confidence: 0.55
+    position:
+      base: 0.04
+      max: 0.10
+      min: 0.008
+    fallback_multipliers:
+      ai_hold: 0.55
+      ai_no_direction: 0.45
+      ai_low_confidence: 0.35
 
 # 合约交易配置
 contract_trading:
@@ -94,6 +120,15 @@ signal_generation:
     model: "deepseek-chat"
     temperature: 0.3
     max_tokens: 2000
+    
+    # 多因子组合（趋势 + 订单流 + 资金面）
+    multi_factor:
+      enabled: true
+      trend_weight: 0.4
+      orderflow_weight: 0.35
+      funding_weight: 0.25
+      min_score: 0.25
+      secondary_score: 0.15
 
 # 交易优化配置（针对15分钟K线优化：提高交易频率，放宽过滤条件）
 trading_optimization:
@@ -111,6 +146,11 @@ trading_optimization:
   # 交易频率控制（针对15分钟K线优化）
   min_trade_interval: 900  # 最小交易间隔（秒）- 15分钟（针对15分钟K线）
   max_loss_streak: 3  # 最大连续亏损次数，超过后暂停交易（放宽到3次）
+  
+  orderflow_analysis:
+    impact_notional: 50000  # 测算冲击成本的基准USDT规模
+    block_trade_notional: 80000  # 判定大单的名义金额
+    block_trade_window_sec: 180  # 判定大单聚集的时间窗口
 
 # 信号评分配置
 signal_scoring:
@@ -120,6 +160,7 @@ signal_scoring:
     funding: 0.15  # 资金面信号
     chain: 0.15  # 链上信号
     sentiment: 0.10  # 情绪面信号
+    multi_factor: 0.25  # 多因子组合（趋势+订单流+资金面）
     ai_analysis: 0.05  # AI分析（主要用于辅助）
   
   thresholds:

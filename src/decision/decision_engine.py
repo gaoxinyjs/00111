@@ -67,10 +67,22 @@ class DecisionEngine:
         """初始化决策引擎"""
         self.config_mgr = get_config_manager()
         self.logger = get_logger("decision_engine")
+        trading_pairs_cfg = self.config_mgr.get_config('trading', 'trading_pairs') or []
+        self.pair_config_map = {
+            pair.get('symbol'): pair
+            for pair in trading_pairs_cfg
+            if pair.get('symbol')
+        }
+        self.default_fallback_multipliers = {
+            'ai_hold': 0.6,
+            'ai_no_direction': 0.5,
+            'ai_low_confidence': 0.4
+        }
         self.signal_generator = SignalGenerator()
         self.position_calculator = PositionCalculator()
         self.risk_evaluator = RiskEvaluator()
         self.entry_timing_evaluator = EntryTimingEvaluator()
+        self.dynamic_confidence_threshold: Optional[float] = None
         
         # 决策历史
         self.decision_history: List[TradingDecision] = []
@@ -174,6 +186,15 @@ class DecisionEngine:
         
         return stop_loss_price, take_profit_price
     
+    def _get_pair_config(self, symbol: str) -> Dict[str, Any]:
+        return self.pair_config_map.get(symbol, {})
+    
+    def _get_fallback_multiplier(self, symbol: str, reason: str) -> float:
+        pair_cfg = self._get_pair_config(symbol)
+        multipliers = pair_cfg.get('fallback_multipliers', {}) or {}
+        fallback_multiplier = multipliers.get(reason, self.default_fallback_multipliers.get(reason, 0.5))
+        return max(0.1, min(fallback_multiplier, 1.0))
+    
     def make_decision(self, symbol: str, market_data: Dict[str, Any], 
                      current_position: Optional[Dict[str, Any]] = None) -> Optional[TradingDecision]:
         """
@@ -243,7 +264,13 @@ class DecisionEngine:
                 return None
             
             # 1. 生成信号
+            pair_cfg = self._get_pair_config(symbol)
             signals = self.signal_generator.generate_signals(symbol, market_data)
+            multi_timeframe = (market_data.get('multi_timeframe') or {})
+            entry_direction = multi_timeframe.get('entry_direction', 'neutral')
+            entry_timing = multi_timeframe.get('entry_timing', 'hold')
+            mtf_confidence = multi_timeframe.get('confidence', 0.0)
+            overall_trend = multi_timeframe.get('overall_trend', 'neutral')
             
             # 1.1. 优先检查DeepSeek的结果（必须严格执行）
             ai_signal = None
@@ -253,7 +280,13 @@ class DecisionEngine:
             deepseek_confidence = 0.0
             analysis: Dict[str, Any] = {}
             auto_trading_cfg = self.config_mgr.get_config('trading', 'auto_trading', {})
-            min_confidence_cfg = auto_trading_cfg.get('min_confidence', 0.3)
+            pair_min_conf = pair_cfg.get('min_confidence')
+            min_confidence_cfg = pair_min_conf if pair_min_conf is not None else auto_trading_cfg.get('min_confidence', 0.3)
+            if self.dynamic_confidence_threshold is not None:
+                try:
+                    min_confidence_cfg = max(float(min_confidence_cfg), float(self.dynamic_confidence_threshold))
+                except (TypeError, ValueError):
+                    min_confidence_cfg = self.dynamic_confidence_threshold
             
             # 查找DeepSeek信号
             for signal in signals:
@@ -305,27 +338,32 @@ class DecisionEngine:
             except (ValueError, TypeError):
                 deepseek_confidence_value = 0.0
             
+            fallback_to_internal = False
+            fallback_reason = ""
             if deepseek_direction == 'hold':
                 if current_position and current_position.get('size', 0) > 0:
                     self.logger.info(f"{symbol}: DeepSeek建议观望，准备平仓当前持仓")
                     return self._build_close_decision(symbol, current_position, analysis, reason='AI建议观望')
-                self.logger.info(f"{symbol}: DeepSeek建议观望，保持观望")
-                return None
+                self.logger.info(f"{symbol}: DeepSeek建议观望，切换为多因子策略")
+                fallback_to_internal = True
+                fallback_reason = "ai_hold"
             
             if deepseek_direction not in ['long', 'short']:
-                self.logger.info(f"{symbol}: DeepSeek未返回有效方向，保持观望")
-                return None
+                self.logger.info(f"{symbol}: DeepSeek未返回有效方向，切换为多因子策略")
+                fallback_to_internal = True
+                fallback_reason = fallback_reason or "ai_no_direction"
             
             if deepseek_confidence_value < 0.65:
                 self.logger.info(
-                    f"{symbol}: DeepSeek信心度{deepseek_confidence_value:.2f}低于阈值0.65，保持观望"
+                    f"{symbol}: DeepSeek信心度{deepseek_confidence_value:.2f}低于阈值0.65，将尝试降级处理"
                 )
                 if current_position and current_position.get('size', 0) > 0:
                     self.logger.info(f"{symbol}: DeepSeek信心度过低，准备平仓当前持仓")
                     return self._build_close_decision(symbol, current_position, analysis, reason='AI信心度不足')
-                return None
+                fallback_to_internal = True
+                fallback_reason = fallback_reason or "ai_low_confidence"
             
-            if current_position and current_position.get('size', 0) > 0:
+            if (not fallback_to_internal) and current_position and current_position.get('size', 0) > 0:
                 current_side = current_position.get('side', '')
                 if current_side == 'buy':
                     current_side = 'long'
@@ -343,7 +381,7 @@ class DecisionEngine:
                     return self._build_close_decision(symbol, current_position, analysis, reason='AI信心度低于最小阈值')
             
             # 如果DeepSeek返回了明确的direction，严格执行
-            if deepseek_direction in ['long', 'short']:
+            if not fallback_to_internal and deepseek_direction in ['long', 'short']:
                 # DeepSeek明确要求做多或做空，必须严格执行
                 self.logger.info(
                     f"✅ [严格执行DeepSeek] {symbol}: DeepSeek要求{'做多' if deepseek_direction == 'long' else '做空'}，"
@@ -459,6 +497,12 @@ class DecisionEngine:
                 position_size = self.position_calculator.calculate_position(
                     temp_signal, market_data, current_position
                 )
+                if fallback_to_internal and fallback_reason:
+                    fallback_multiplier = self._get_fallback_multiplier(symbol, fallback_reason)
+                    position_size *= fallback_multiplier
+                    self.logger.info(
+                        f"{symbol}: 降级模式({fallback_reason})，仓位按 {fallback_multiplier:.2f} 倍缩放 -> {position_size:.2%}"
+                    )
                 
                 if position_size <= 0:
                     self.logger.warning(f"{symbol}: DeepSeek要求{action}，但计算仓位为0，跳过")
@@ -617,6 +661,10 @@ class DecisionEngine:
                 decision._deepseek_direction = deepseek_direction
                 decision._deepseek_entry_price = entry_limit_price
                 decision._deepseek_exit_price = exit_limit_price
+                decision._fallback = {
+                    'used': False,
+                    'reason': fallback_reason if fallback_reason else None
+                }
                 
                 # 记录决策
                 self.decision_history.append(decision)
@@ -668,93 +716,10 @@ class DecisionEngine:
                 )
                 
                 return decision
-            
-            elif deepseek_direction == 'hold':
-                # DeepSeek返回了hold，但系统不允许hold，强制根据趋势选择方向
-                self.logger.warning(
-                    f"⚠️ [DeepSeek返回hold] {symbol}: DeepSeek要求观望，但系统不允许hold，将根据趋势强制选择方向"
+            elif fallback_to_internal:
+                self.logger.info(
+                    f"{symbol}: DeepSeek决策降级({fallback_reason})，启用多因子与趋势策略继续评估"
                 )
-                # 获取整体趋势，强制选择方向
-                multi_timeframe = market_data.get('multi_timeframe', {})
-                overall_trend = multi_timeframe.get('overall_trend', '').lower()
-                
-                # 根据趋势选择方向
-                if '上涨' in overall_trend or '看涨' in overall_trend or 'up' in overall_trend:
-                    deepseek_direction = 'long'
-                    self.logger.info(f"{symbol}: 根据整体趋势（上涨），强制选择long")
-                elif '下跌' in overall_trend or '看跌' in overall_trend or 'down' in overall_trend:
-                    deepseek_direction = 'short'
-                    self.logger.info(f"{symbol}: 根据整体趋势（下跌），强制选择short")
-                else:
-                    # 如果无法判断趋势，根据当前价格变化选择
-                    current_price = market_data.get('price', 0)
-                    change_24h = market_data.get('change_24h', 0)
-                    try:
-                        change_24h_float = float(change_24h) if change_24h else 0.0
-                        if change_24h_float > 0:
-                            deepseek_direction = 'long'
-                            self.logger.info(f"{symbol}: 根据24h涨跌（+{change_24h_float:.2f}%），强制选择long")
-                        else:
-                            deepseek_direction = 'short'
-                            self.logger.info(f"{symbol}: 根据24h涨跌（{change_24h_float:.2f}%），强制选择short")
-                    except (ValueError, TypeError):
-                        # 如果无法判断，默认选择long
-                        deepseek_direction = 'long'
-                        self.logger.info(f"{symbol}: 无法判断趋势，默认选择long")
-                
-                # 继续执行，使用强制选择的方向
-            
-            # 如果DeepSeek没有返回明确的direction，强制根据趋势选择方向
-            if not deepseek_direction or deepseek_direction not in ['long', 'short']:
-                self.logger.warning(
-                    f"⚠️ [DeepSeek未返回有效direction] {symbol}: "
-                    f"将根据趋势强制选择方向"
-                )
-                # 获取整体趋势，强制选择方向
-                multi_timeframe = market_data.get('multi_timeframe', {})
-                overall_trend = multi_timeframe.get('overall_trend', '').lower()
-                
-                # 根据趋势选择方向
-                if '上涨' in overall_trend or '看涨' in overall_trend or 'up' in overall_trend:
-                    deepseek_direction = 'long'
-                    self.logger.info(f"{symbol}: 根据整体趋势（上涨），强制选择long")
-                elif '下跌' in overall_trend or '看跌' in overall_trend or 'down' in overall_trend:
-                    deepseek_direction = 'short'
-                    self.logger.info(f"{symbol}: 根据整体趋势（下跌），强制选择short")
-                else:
-                    # 如果无法判断趋势，根据当前价格变化选择
-                    current_price = market_data.get('price', 0)
-                    change_24h = market_data.get('change_24h', 0)
-                    try:
-                        change_24h_float = float(change_24h) if change_24h else 0.0
-                        if change_24h_float > 0:
-                            deepseek_direction = 'long'
-                            self.logger.info(f"{symbol}: 根据24h涨跌（+{change_24h_float:.2f}%），强制选择long")
-                        else:
-                            deepseek_direction = 'short'
-                            self.logger.info(f"{symbol}: 根据24h涨跌（{change_24h_float:.2f}%），强制选择short")
-                    except (ValueError, TypeError):
-                        # 如果无法判断，默认选择long
-                        deepseek_direction = 'long'
-                        self.logger.info(f"{symbol}: 无法判断趋势，默认选择long")
-                
-                # 继续执行，使用强制选择的方向
-            
-            # 代码内部不做决策，只提供指标，所有决策都由DeepSeek完成
-            # 如果到达这里，说明DeepSeek返回了direction但未在上面的逻辑中处理
-            # 这不应该发生，但为了安全起见，返回None
-            self.logger.warning(
-                f"{symbol}: 代码内部不做决策，只提供指标，所有决策都由DeepSeek完成。"
-                f"如果DeepSeek返回了direction但未在上面的逻辑中处理，保持观望"
-            )
-            return None
-            
-            # 以下代码已被删除：代码内部不做决策，只提供指标，所有决策都由DeepSeek完成
-            # 所有自动决策逻辑（信号融合、多时间周期分析、技术指标判断等）已移除
-            # 系统只提供指标数据给DeepSeek，所有决策都由DeepSeek完成
-            entry_direction = multi_timeframe.get('entry_direction', 'neutral')
-            mtf_confidence = multi_timeframe.get('confidence', 0.0)
-            overall_trend = multi_timeframe.get('overall_trend', 'neutral')
             
             # 像狼一样：敏锐观察，抓住更多机会（进一步降低阈值）
             # 如果多时间周期分析建议观望，且信心度很低，强制选择方向而不是hold
@@ -1042,6 +1007,10 @@ class DecisionEngine:
                 signals=[s.to_dict() for s in signals],
                 risk_assessment=risk_assessment
             )
+            decision._fallback = {
+                'used': bool(fallback_to_internal),
+                'reason': fallback_reason if fallback_reason else None
+            }
             
             # 7. 记录决策历史
             self.decision_history.append(decision)
@@ -1138,6 +1107,17 @@ class DecisionEngine:
             signals=[{'source': 'ai', 'analysis': analysis}],
             risk_assessment={'reason': reason, 'trigger': 'ai_exit'}
         )
+
+    def set_confidence_override(self, threshold: Optional[float]):
+        """设置AI最小信心度覆盖值"""
+        if threshold is None:
+            self.dynamic_confidence_threshold = None
+            return
+        try:
+            value = float(threshold)
+            self.dynamic_confidence_threshold = max(0.0, min(value, 1.0))
+        except (TypeError, ValueError):
+            self.dynamic_confidence_threshold = None
 
     def _calculate_signal_bias(self, symbol: str, signals: List[Signal]) -> float:
         """根据全部信号计算多因子方向倾向"""

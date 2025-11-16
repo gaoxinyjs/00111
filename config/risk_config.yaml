@@ -118,3 +118,24 @@ risk_limits:
   max_loss_per_day: 0.02  # 单日最大亏损2%（参考ds-main）
   max_loss_per_week: 0.10  # 单周最大亏损10%（严格风险控制）
   max_consecutive_losses: 2  # 最大连续亏损次数（参考ds-main：2次亏损暂停）
+
+macro_events:
+  enabled: true
+  default_level: "normal"
+  risk_levels:
+    high: 0.8
+    medium: 0.5
+    low: 0.2
+    normal: 0.1
+  events:
+    - name: "FOMC会议"
+      level: "high"
+      start: "2025-11-14T18:00:00Z"
+      end: "2025-11-14T22:00:00Z"
+      symbols: ["SOL-USDT-SWAP", "ETH-USDT-SWAP"]
+      note: "美联储议息，短时波动明显放大"
+    - name: "美国CPI数据"
+      level: "medium"
+      start: "2025-11-15T12:30:00Z"
+      end: "2025-11-15T14:00:00Z"
+      note: "宏观通胀数据公布"

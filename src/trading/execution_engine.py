@@ -342,8 +342,8 @@ class ExecutionEngine:
             
             # 3.1. 准备止盈止损价格（在创建订单时设置）
             size = base_size_by_value
-            stop_loss_price = None
-            take_profit_price = None
+            stop_loss_price = float(decision.stop_loss) if getattr(decision, 'stop_loss', None) else None
+            take_profit_price = float(decision.take_profit) if getattr(decision, 'take_profit', None) else None
             entry_price_for_sl = float(price_for_calc)
             tick_size = tick_size if tick_size and tick_size > 0 else 0.0001
             if not is_closing:
@@ -352,19 +352,21 @@ class ExecutionEngine:
                 atr_stop_multiplier = float(self.risk_config.get('atr_stop_multiplier', 1.2) or 1.2)
                 atr_tp_multiplier = float(self.risk_config.get('atr_take_profit_multiplier', 2.5) or 2.5)
                 tp_stop_ratio = float(self.risk_config.get('take_profit_to_stop_ratio', 2.0) or 2.0)
-                base_stop_distance = (atr_value or 0.0) * atr_stop_multiplier
-                base_tp_distance = (atr_value or 0.0) * atr_tp_multiplier
-                stop_distance = max(base_stop_distance, min_stop_distance)
-                take_profit_distance = max(base_tp_distance, stop_distance * tp_stop_ratio)
-                if decision.action in ['long', 'buy']:
-                    stop_loss_price = entry_price_for_sl - stop_distance
-                    take_profit_price = entry_price_for_sl + take_profit_distance
-                elif decision.action in ['short', 'sell']:
-                    stop_loss_price = entry_price_for_sl + stop_distance
-                    take_profit_price = entry_price_for_sl - take_profit_distance
-                else:
-                    stop_loss_price = None
-                    take_profit_price = None
+                if stop_loss_price is None or take_profit_price is None:
+                    base_stop_distance = (atr_value or 0.0) * atr_stop_multiplier
+                    base_tp_distance = (atr_value or 0.0) * atr_tp_multiplier
+                    stop_distance = max(base_stop_distance, min_stop_distance)
+                    take_profit_distance = max(base_tp_distance, stop_distance * tp_stop_ratio)
+                    if stop_loss_price is None:
+                        if decision.action in ['long', 'buy']:
+                            stop_loss_price = entry_price_for_sl - stop_distance
+                        elif decision.action in ['short', 'sell']:
+                            stop_loss_price = entry_price_for_sl + stop_distance
+                    if take_profit_price is None:
+                        if decision.action in ['long', 'buy']:
+                            take_profit_price = entry_price_for_sl + take_profit_distance
+                        elif decision.action in ['short', 'sell']:
+                            take_profit_price = entry_price_for_sl - take_profit_distance
                 stop_loss_price, take_profit_price = self._adjust_sl_tp_prices(
                     side=side,
                     entry_price=entry_price_for_sl,
@@ -374,7 +376,7 @@ class ExecutionEngine:
                 )
                 risk_pct = float(self.risk_config.get('per_trade_risk_pct', 0.005) or 0.005)
                 risk_amount = available_balance * risk_pct
-                stop_distance_abs = abs(stop_loss_price - entry_price_for_sl) if stop_loss_price else 0.0
+                stop_distance_abs = abs(stop_loss_price - entry_price_for_sl) if stop_loss_price is not None else 0.0
                 if stop_distance_abs > 0:
                     risk_based_size = risk_amount / (stop_distance_abs * ct_val)
                     if risk_based_size <= 0:
