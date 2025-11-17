@@ -16,6 +16,7 @@ from ..decision.risk_evaluator import RiskEvaluator
 from ..decision.entry_timing_evaluator import EntryTimingEvaluator
 from ..decision.scene_detector import SceneDetector
 from ..decision.strategy_router import StrategyRouter
+from ..decision.strategy_executor import StrategyExecutor
 from ..core.exception import StrategyException
 from datetime import timedelta
 
@@ -87,6 +88,7 @@ class DecisionEngine:
         self.dynamic_confidence_threshold: Optional[float] = None
         self.scene_detector = SceneDetector()
         self.strategy_router = StrategyRouter()
+        self.strategy_executor = StrategyExecutor()
         trading_opt_cfg = self.config_mgr.get_config('trading', 'trading_optimization', {}) or {}
         self.allow_immediate_reentry = trading_opt_cfg.get('allow_immediate_reentry', False)
         
@@ -700,6 +702,9 @@ class DecisionEngine:
                 )
                 if strategy_plan:
                     decision._strategy_plan = strategy_plan.to_dict()
+                    decision = self.strategy_executor.apply(strategy_plan, decision, market_data)
+                    if decision is None:
+                        return None
                 
                 # 标记为DeepSeek决策（用于执行引擎识别，必须严格执行）
                 decision._is_deepseek_decision = True
@@ -1054,6 +1059,9 @@ class DecisionEngine:
             )
         if strategy_plan:
             decision._strategy_plan = strategy_plan.to_dict()
+            decision = self.strategy_executor.apply(strategy_plan, decision, market_data)
+            if decision is None:
+                return None
         decision._fallback = {
             'used': bool(fallback_to_internal),
             'reason': fallback_reason if fallback_reason else None
