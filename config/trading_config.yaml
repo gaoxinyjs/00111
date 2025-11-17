@@ -153,6 +153,15 @@ trading_optimization:
     block_trade_notional: 80000  # 判定大单的名义金额
     block_trade_window_sec: 180  # 判定大单聚集的时间窗口
 
+scene_detection:
+  trend_adx_threshold: 22
+  range_vol_threshold: 2.5
+  bb_width_threshold: 0.05
+  event_score_threshold: 0.6
+
+# 可选：自定义策略模板（若为空则使用内置默认模板）
+strategy_templates: {}
+
 # 信号评分配置
 signal_scoring:
   weights:

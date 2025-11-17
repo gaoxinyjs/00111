@@ -14,6 +14,8 @@ from ..analysis.signal_generator import SignalGenerator, Signal
 from ..decision.position_calculator import PositionCalculator
 from ..decision.risk_evaluator import RiskEvaluator
 from ..decision.entry_timing_evaluator import EntryTimingEvaluator
+from ..decision.scene_detector import SceneDetector
+from ..decision.strategy_router import StrategyRouter
 from ..core.exception import StrategyException
 from datetime import timedelta
 
@@ -83,6 +85,8 @@ class DecisionEngine:
         self.risk_evaluator = RiskEvaluator()
         self.entry_timing_evaluator = EntryTimingEvaluator()
         self.dynamic_confidence_threshold: Optional[float] = None
+        self.scene_detector = SceneDetector()
+        self.strategy_router = StrategyRouter()
         trading_opt_cfg = self.config_mgr.get_config('trading', 'trading_optimization', {}) or {}
         self.allow_immediate_reentry = trading_opt_cfg.get('allow_immediate_reentry', False)
         
@@ -281,11 +285,33 @@ class DecisionEngine:
             # 1. 生成信号
             pair_cfg = self._get_pair_config(symbol)
             signals = self.signal_generator.generate_signals(symbol, market_data)
-            multi_timeframe = (market_data.get('multi_timeframe') or {})
-            entry_direction = multi_timeframe.get('entry_direction', 'neutral')
-            entry_timing = multi_timeframe.get('entry_timing', 'hold')
-            mtf_confidence = multi_timeframe.get('confidence', 0.0)
-            overall_trend = multi_timeframe.get('overall_trend', 'neutral')
+        multi_timeframe = (market_data.get('multi_timeframe') or {})
+        entry_direction = multi_timeframe.get('entry_direction', 'neutral')
+        entry_timing = multi_timeframe.get('entry_timing', 'hold')
+        mtf_confidence = multi_timeframe.get('confidence', 0.0)
+        overall_trend = multi_timeframe.get('overall_trend', 'neutral')
+
+        scene_context = None
+        strategy_plan = None
+        try:
+            scene_context = self.scene_detector.detect(symbol, market_data, current_position)
+            if scene_context:
+                market_data['scene'] = scene_context.to_dict()
+                self.logger.info(
+                    f"[情景识别] {symbol}: 类型={scene_context.scene_type}, "
+                    f"置信度={scene_context.confidence:.2f}, 波动率={scene_context.volatility:.3f}"
+                )
+            strategy_plan = self.strategy_router.build_plan(scene_context, market_data, current_position)
+            if strategy_plan:
+                market_data['strategy_plan'] = strategy_plan.to_dict()
+                self.logger.info(
+                    f"[策略模板] {symbol}: {strategy_plan.name} | 偏向={strategy_plan.bias} | "
+                    f"风险={strategy_plan.risk.get('stop_loss')}"
+                )
+                if entry_direction in (None, '', 'neutral') and strategy_plan.bias in ['long', 'short']:
+                    entry_direction = strategy_plan.bias
+        except Exception as scene_err:
+            self.logger.debug(f"[情景识别] {symbol}: 处理失败 {scene_err}")
             
             # 1.1. 优先检查DeepSeek的结果（必须严格执行）
             ai_signal = None
@@ -672,6 +698,8 @@ class DecisionEngine:
                     signals=[signal.to_dict() for signal in signals if signal.source == 'ai'],
                     risk_assessment=risk_assessment
                 )
+                if strategy_plan:
+                    decision._strategy_plan = strategy_plan.to_dict()
                 
                 # 标记为DeepSeek决策（用于执行引擎识别，必须严格执行）
                 decision._is_deepseek_decision = True
@@ -1024,18 +1052,20 @@ class DecisionEngine:
                 signals=[s.to_dict() for s in signals],
                 risk_assessment=risk_assessment
             )
-            decision._fallback = {
-                'used': bool(fallback_to_internal),
-                'reason': fallback_reason if fallback_reason else None
-            }
-            
-            # 7. 记录决策历史
-            self.decision_history.append(decision)
-            if len(self.decision_history) > 1000:
-                self.decision_history = self.decision_history[-1000:]
-            
-            # 记录决策（合约交易模式）
-            if is_contract_mode:
+        if strategy_plan:
+            decision._strategy_plan = strategy_plan.to_dict()
+        decision._fallback = {
+            'used': bool(fallback_to_internal),
+            'reason': fallback_reason if fallback_reason else None
+        }
+        
+        # 7. 记录决策历史
+        self.decision_history.append(decision)
+        if len(self.decision_history) > 1000:
+            self.decision_history = self.decision_history[-1000:]
+        
+        # 记录决策（合约交易模式）
+        if is_contract_mode:
                 action_desc = {
                     'long': '做多',
                     'short': '做空',
