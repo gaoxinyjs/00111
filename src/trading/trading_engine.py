@@ -1026,6 +1026,7 @@ class TradingEngine:
         for decision in decisions:
             try:
                 symbol = decision.symbol
+                is_closing_action = self._is_closing_position(symbol, decision.action)
                 
                 # 检查是否为DeepSeek决策（必须严格执行）
                 # 优先检查decision对象上的标记
@@ -1064,20 +1065,23 @@ class TradingEngine:
                         )
                         continue
                     
-                    # 检查仓位大小
-                    if decision.position_size < self.min_position_size:
+                    # 检查仓位大小（仅针对开仓/增仓）
+                    if (not is_closing_action) and (decision.position_size < self.min_position_size):
                         self.logger.info(
                             f"{symbol}: 仓位大小{decision.position_size:.2%}低于阈值{self.min_position_size:.2%}，跳过执行"
                         )
                         continue
                     
-                    # 风险检查
-                    position_size = decision.position_size
-                    market_data = {'price': decision.price or 0, 'volatility': 0.25}
-                    
-                    if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data):
-                        self.logger.warning(f"{symbol}: 风险检查未通过，拒绝交易")
-                        continue
+                    # 风险检查（平仓操作应始终允许，跳过风险拦截）
+                    if not is_closing_action:
+                        position_size = decision.position_size
+                        market_data = {'price': decision.price or 0, 'volatility': 0.25}
+                        
+                        if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data):
+                            self.logger.warning(f"{symbol}: 风险检查未通过，拒绝交易")
+                            continue
+                    else:
+                        self.logger.debug(f"{symbol}: 平仓操作，跳过风险评估拦截")
                 
                 # 记录准备执行的决策
                 action_desc = {
@@ -1113,7 +1117,7 @@ class TradingEngine:
                 ai_analysis = getattr(decision, 'ai_analysis', None) or {}
                 
                 # 🔍 检查是否有待成交的委托订单，避免重复创建（只检查开仓订单）
-                if not self._is_closing_position(symbol, decision.action):
+                if not is_closing_action:
                     existing_pending = self.pending_orders.get(symbol)
                     if existing_pending:
                         existing_order = existing_pending.get('order')
@@ -1153,7 +1157,7 @@ class TradingEngine:
                                 del self.pending_orders[symbol]
                 
                 # 记录交易决策（开仓时）
-                if not self._is_closing_position(symbol, decision.action):
+                if not is_closing_action:
                     strategy_context = self._build_strategy_context(decision, ai_analysis, symbol_market_data)
                     session_tag = self._derive_session_tag()
                     volatility_regime = self._derive_volatility_regime(symbol_market_data)
@@ -1219,7 +1223,7 @@ class TradingEngine:
                         )
                         
                         # 记录开仓时间（如果是开仓订单）
-                        if not self._is_closing_position(symbol, decision.action):
+                        if not is_closing_action:
                             self.position_entry_times[symbol] = {
                                 'entry_time': fill_time,
                                 'position_side': decision.position_side,
@@ -1254,7 +1258,7 @@ class TradingEngine:
                                 )
                         
                         # 计算收益（如果是平仓）
-                        if self._is_closing_position(symbol, decision.action):
+                        if is_closing_action:
                             trade_info = self.active_trade_records.pop(symbol, None) or {}
                             trade_info.update({
                                 'exit_price': fill_price,
