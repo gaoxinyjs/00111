@@ -38,9 +38,12 @@ class StrategyExecutor:
             return None
 
         indicators = (market_data or {}).get('indicators', {}) or {}
-        atr_value = self._float(indicators.get('atr'), default=None)
-        atr_pct = self._float(indicators.get('atr_pct'), default=None)
         price = decision.price or market_data.get('price') or 0
+        atr_value = self._float(indicators.get('atr'), default=None)
+        if atr_value is None and price:
+            atr_pct = self._float(indicators.get('atr_pct'), default=None)
+            if atr_pct:
+                atr_value = price * atr_pct / 100.0
 
         # 仓位限制
         max_pct = plan.risk.get('max_position_pct')
@@ -52,11 +55,34 @@ class StrategyExecutor:
 
         # 止损调整
         stop_mode = plan.risk.get('stop_loss')
-        decision.stop_loss = self._apply_stop_loss(stop_mode, decision, price, atr_value, atr_pct)
+        decision.stop_loss = self._apply_stop_loss(stop_mode, decision, price, atr_value)
 
         # 止盈调整
         take_mode = plan.risk.get('take_profit')
-        decision.take_profit = self._apply_take_profit(take_mode, decision, price, atr_value, atr_pct)
+        decision.take_profit = self._apply_take_profit(take_mode, decision, price, atr_value)
+
+        # 分层入场（层不为空，并且当前决策是开仓时才处理）
+        if plan.entries and decision.action in ['long', 'short']:
+            adjusted_size = 0.0
+            final_entries = []
+            for layer in plan.entries:
+                if layer.get('type') != 'layer':
+                    continue
+                ratio = self._float(layer.get('size_ratio'), default=0.0)
+                if ratio <= 0:
+                    continue
+                offset = float(layer.get('price_offset', 0))
+                entry_price = price * (1 + offset) if price else None
+                entry = {
+                    'order_type': layer.get('order_type', 'market'),
+                    'size_ratio': ratio,
+                    'price': entry_price
+                }
+                final_entries.append(entry)
+                adjusted_size += ratio
+            if final_entries and adjusted_size > 0:
+                decision._layered_entries = final_entries
+                decision.position_size = min(decision.position_size, adjusted_size)
 
         # 事件场景仅允许减仓
         if plan.scene_type == 'event' and decision.action in ['long', 'short']:
@@ -65,7 +91,7 @@ class StrategyExecutor:
         decision.reasoning = f"{decision.reasoning} | 策略:{plan.name}"
         return decision
 
-    def _apply_stop_loss(self, mode: Optional[str], decision, price, atr_value, atr_pct):
+    def _apply_stop_loss(self, mode: Optional[str], decision, price, atr_value):
         if mode is None or decision.action in ['close_long', 'close_short']:
             return decision.stop_loss
 
@@ -90,7 +116,7 @@ class StrategyExecutor:
             self.logger.debug(f"[策略执行] 止损调整失败: {err}")
         return decision.stop_loss
 
-    def _apply_take_profit(self, mode: Optional[str], decision, price, atr_value, atr_pct):
+    def _apply_take_profit(self, mode: Optional[str], decision, price, atr_value):
         if mode is None or decision.action in ['close_long', 'close_short']:
             return decision.take_profit
 

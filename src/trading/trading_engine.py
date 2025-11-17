@@ -1,3 +1,27 @@
+    def _clone_decision(self, decision, entry_meta: Dict[str, Any]):
+        from ..decision.decision_engine import TradingDecision
+        price = entry_meta.get('price') or decision.price
+        size_ratio = entry_meta.get('size_ratio', 1.0)
+        entry_decision = TradingDecision(
+            symbol=decision.symbol,
+            action=decision.action,
+            position_size=decision.position_size * size_ratio,
+            position_side=decision.position_side,
+            price=price,
+            stop_loss=decision.stop_loss,
+            take_profit=decision.take_profit,
+            confidence=decision.confidence,
+            reasoning=decision.reasoning,
+            signals=decision.signals,
+            risk_assessment=decision.risk_assessment
+        )
+        entry_decision._is_deepseek_decision = getattr(decision, '_is_deepseek_decision', False)
+        entry_decision._deepseek_direction = getattr(decision, '_deepseek_direction', None)
+        entry_decision._strategy_plan = getattr(decision, '_strategy_plan', None)
+        entry_decision._fallback = getattr(decision, '_fallback', {})
+        entry_decision._record_id = getattr(decision, '_record_id', None)
+        entry_decision._layer_entry = entry_meta
+        return entry_decision
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -1179,7 +1203,13 @@ class TradingEngine:
                     self.logger.info(f"[自学习] 记录开仓决策，记录ID: {record_id}")
                 
                 # 执行交易
-                order = await self.execution_engine.execute_decision(decision)
+                    layered_entries = getattr(decision, '_layered_entries', None)
+                    if layered_entries:
+                        for entry in layered_entries:
+                            entry_decision = self._clone_decision(decision, entry)
+                            order = await self.execution_engine.execute_decision(entry_decision)
+                    else:
+                        order = await self.execution_engine.execute_decision(decision)
                 
                 if order:
                     self.logger.info(f"{symbol}: 交易执行成功，订单ID: {order.order_id}")

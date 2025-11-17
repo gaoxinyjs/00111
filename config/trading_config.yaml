@@ -160,7 +160,24 @@ scene_detection:
   event_score_threshold: 0.6
 
 # 可选：自定义策略模板（若为空则使用内置默认模板）
-strategy_templates: {}
+strategy_templates:
+  scenes:
+    trend_up:
+      name: "trend_follow_long"
+      bias: "long"
+      entries:
+        - type: "layer"
+          price_offset: -0.003
+          size_ratio: 0.6
+          order_type: "limit"
+        - type: "layer"
+          price_offset: 0.0
+          size_ratio: 0.4
+          order_type: "market"
+      risk:
+        stop_loss: "trail_atr"
+        take_profit: "partial_scale_out"
+        max_position_pct: 0.25
 
 # 信号评分配置
 signal_scoring:

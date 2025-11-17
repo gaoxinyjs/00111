@@ -49,7 +49,8 @@ class StrategyRouter:
     def build_plan(self, scene: SceneContext, market_data: Dict[str, Any],
                    current_position: Optional[Dict[str, Any]] = None) -> StrategyPlan:
         scene_type = scene.scene_type if scene else 'neutral'
-        template = self.templates.get(scene_type, self.templates.get('neutral'))
+        symbol = market_data.get('symbol')
+        template = self._resolve_template(symbol, scene_type)
         plan = StrategyPlan(
             name=template.get('name', 'default'),
             scene_type=scene_type,
@@ -66,6 +67,13 @@ class StrategyRouter:
         if current_position and current_position.get('size', 0) > 0:
             risk.setdefault('manage_existing', True)
         return risk
+
+    def _resolve_template(self, symbol: Optional[str], scene_type: str) -> Dict[str, Any]:
+        symbol_templates = self.templates.get('symbols', {}) if isinstance(self.templates, dict) else {}
+        scene_templates = self.templates.get('scenes', {}) if isinstance(self.templates, dict) else {}
+        if symbol and symbol in symbol_templates:
+            return symbol_templates[symbol].get(scene_type, symbol_templates[symbol].get('default', self._default_templates()[scene_type]))
+        return scene_templates.get(scene_type) or self.templates.get(scene_type) or self._default_templates().get(scene_type, self._default_templates()['neutral'])
 
     @staticmethod
     def _default_templates() -> Dict[str, Dict[str, Any]]:
