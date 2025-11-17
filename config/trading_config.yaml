@@ -146,6 +146,7 @@ trading_optimization:
   # 交易频率控制（针对15分钟K线优化）
   min_trade_interval: 900  # 最小交易间隔（秒）- 15分钟（针对15分钟K线）
   max_loss_streak: 3  # 最大连续亏损次数，超过后暂停交易（放宽到3次）
+  allow_immediate_reentry: true  # DeepSeek重复信号时允许立即加仓/调整
   
   orderflow_analysis:
     impact_notional: 50000  # 测算冲击成本的基准USDT规模

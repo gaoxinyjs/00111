@@ -83,6 +83,8 @@ class DecisionEngine:
         self.risk_evaluator = RiskEvaluator()
         self.entry_timing_evaluator = EntryTimingEvaluator()
         self.dynamic_confidence_threshold: Optional[float] = None
+        trading_opt_cfg = self.config_mgr.get_config('trading', 'trading_optimization', {}) or {}
+        self.allow_immediate_reentry = trading_opt_cfg.get('allow_immediate_reentry', False)
         
         # 决策历史
         self.decision_history: List[TradingDecision] = []
@@ -216,6 +218,7 @@ class DecisionEngine:
         trading_config = self.config_mgr.get_config('trading', 'trading_optimization', {})
         min_interval = trading_config.get('min_trade_interval', self.trade_stats['min_trade_interval'])
         self.trade_stats['min_trade_interval'] = min_interval
+        allow_immediate_reentry = trading_config.get('allow_immediate_reentry', self.allow_immediate_reentry)
         
         # 计算当前是否存在持仓
         current_position_size = 0.0
@@ -445,24 +448,26 @@ class DecisionEngine:
                             action = 'close_short'
                             self.logger.info(f"{symbol}: DeepSeek要求做多，但当前有空仓，先平空")
                         elif current_side == position_side:
-                            # 同方向持仓，检查是否距离上次交易已超过15分钟
-                            # 如果超过15分钟，允许重新评估（可能需要调整仓位或平仓后重新开仓）
                             if time_since_last >= min_interval:
                                 self.logger.info(
                                     f"{symbol}: DeepSeek要求{action}，当前已有{current_side}仓，"
                                     f"但距离上次交易已{time_since_last:.0f}秒 >= {min_interval}秒，"
                                     f"允许重新评估（可能需要先平仓）"
                                 )
-                                # 先平仓，然后开新仓
                                 if current_side == 'long':
                                     action = 'close_long'
-                                    self.logger.info(f"{symbol}: 先平多仓，然后准备开新{action}仓")
+                                    self.logger.info(f"{symbol}: 先平多仓，然后准备开新仓")
                                 elif current_side == 'short':
                                     action = 'close_short'
-                                    self.logger.info(f"{symbol}: 先平空仓，然后准备开新{action}仓")
-                                # 继续执行，会在平仓后生成新的开仓决策
+                                    self.logger.info(f"{symbol}: 先平空仓，然后准备开新仓")
+                            elif allow_immediate_reentry:
+                                self.logger.info(
+                                    f"{symbol}: DeepSeek要求{action}，当前已有{current_side}仓，"
+                                    f"但距离上次交易仅{time_since_last:.0f}秒 < {min_interval}秒，"
+                                    f"根据配置允许立即加仓/调整"
+                                )
+                                # 维持action为long/short以执行加仓
                             else:
-                                # 距离上次交易不足15分钟，不重复开仓
                                 self.logger.info(
                                     f"{symbol}: DeepSeek要求{action}，但当前已有{current_side}仓，"
                                     f"且距离上次交易仅{time_since_last:.0f}秒 < {min_interval}秒，"
