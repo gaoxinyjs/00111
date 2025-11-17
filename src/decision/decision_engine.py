@@ -211,33 +211,45 @@ class DecisionEngine:
         try:
             self.logger.info(f"开始生成交易决策: {symbol}")
             
-            # 0. 检查交易频率限制（针对15分钟K线优化：每15分钟必须生成一次决策）
-            # 从配置读取交易间隔（如果配置中有的话）
-            trading_config = self.config_mgr.get_config('trading', 'trading_optimization', {})
-            min_interval = trading_config.get('min_trade_interval', self.trade_stats['min_trade_interval'])
-            self.trade_stats['min_trade_interval'] = min_interval
-            
-            # 计算距离上次交易的时间
-            time_since_last = 0
-            if self.trade_stats['last_trade_time']:
-                time_since_last = (datetime.now() - self.trade_stats['last_trade_time']).total_seconds()
-            
-            # 如果距离上次交易不足15分钟，但是已经接近15分钟（剩余时间<60秒），允许生成决策
-            # 这样可以确保每15分钟都能做出一次决策
-            if time_since_last > 0 and time_since_last < min_interval:
-                remaining_time = min_interval - time_since_last
-                if remaining_time > 60:  # 如果剩余时间超过60秒，跳过
-                    self.logger.warning(
-                        f"{symbol}: [交易频率限制] 距离上次交易仅{time_since_last:.0f}秒 < {min_interval}秒，"
-                        f"剩余{remaining_time:.0f}秒，跳过"
-                    )
-                    return None
-                else:
-                    # 接近15分钟了，允许生成决策（但标记为即将到期）
-                    self.logger.info(
-                        f"{symbol}: [交易频率限制] 距离上次交易{time_since_last:.0f}秒，"
-                        f"剩余{remaining_time:.0f}秒，允许生成决策（接近15分钟）"
-                    )
+        # 0. 检查交易频率限制（针对15分钟K线优化：每15分钟必须生成一次决策）
+        # 从配置读取交易间隔（如果配置中有的话）
+        trading_config = self.config_mgr.get_config('trading', 'trading_optimization', {})
+        min_interval = trading_config.get('min_trade_interval', self.trade_stats['min_trade_interval'])
+        self.trade_stats['min_trade_interval'] = min_interval
+        
+        # 计算当前是否存在持仓
+        current_position_size = 0.0
+        if current_position:
+            try:
+                current_position_size = float(current_position.get('size', 0) or 0.0)
+            except (TypeError, ValueError):
+                current_position_size = 0.0
+        has_active_position = current_position_size > 0
+        
+        # 计算距离上次交易的时间
+        time_since_last = 0
+        if self.trade_stats['last_trade_time']:
+            time_since_last = (datetime.now() - self.trade_stats['last_trade_time']).total_seconds()
+        
+        # 如果存在持仓，则执行冷却限制；否则允许立即重启下一次策略
+        if has_active_position and time_since_last > 0 and time_since_last < min_interval:
+            remaining_time = min_interval - time_since_last
+            if remaining_time > 60:  # 如果剩余时间超过60秒，跳过
+                self.logger.warning(
+                    f"{symbol}: [交易频率限制] 距离上次交易仅{time_since_last:.0f}秒 < {min_interval}秒，"
+                    f"剩余{remaining_time:.0f}秒，跳过"
+                )
+                return None
+            else:
+                # 接近15分钟了，允许生成决策（但标记为即将到期）
+                self.logger.info(
+                    f"{symbol}: [交易频率限制] 距离上次交易{time_since_last:.0f}秒，"
+                    f"剩余{remaining_time:.0f}秒，允许生成决策（接近15分钟）"
+                )
+        elif not has_active_position and time_since_last > 0 and time_since_last < min_interval:
+            self.logger.debug(
+                f"{symbol}: 当前无持仓，忽略{min_interval}秒冷却限制（上次交易{time_since_last:.0f}秒前）"
+            )
             
             # 0.1. 检查日亏损限制（参考ds-main）
             today = datetime.now().date()
