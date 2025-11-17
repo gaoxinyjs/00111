@@ -75,15 +75,14 @@ class StrategyRouter:
             return symbol_templates[symbol].get(scene_type, symbol_templates[symbol].get('default', self._default_templates()[scene_type]))
         return scene_templates.get(scene_type) or self.templates.get(scene_type) or self._default_templates().get(scene_type, self._default_templates()['neutral'])
 
-    @staticmethod
-    def _default_templates() -> Dict[str, Dict[str, Any]]:
-        return {
+    def _default_templates(self) -> Dict[str, Dict[str, Any]]:
+        return self.config_mgr.get_config('trading', 'strategy_templates_defaults', {
             'trend_up': {
                 'name': 'trend_follow_long',
                 'bias': 'long',
                 'entries': [
-                    {'type': 'pullback_buy', 'trigger': 'ma20', 'size_ratio': 0.6},
-                    {'type': 'breakout_buy', 'trigger': 'recent_high', 'size_ratio': 0.4},
+                    {'type': 'layer', 'price_offset': -0.003, 'size_ratio': 0.6, 'order_type': 'limit'},
+                    {'type': 'layer', 'price_offset': 0.0, 'size_ratio': 0.4, 'order_type': 'market'},
                 ],
                 'risk': {
                     'stop_loss': 'trail_atr',
@@ -96,8 +95,8 @@ class StrategyRouter:
                 'name': 'trend_follow_short',
                 'bias': 'short',
                 'entries': [
-                    {'type': 'pullback_sell', 'trigger': 'ma20', 'size_ratio': 0.6},
-                    {'type': 'breakdown_sell', 'trigger': 'recent_low', 'size_ratio': 0.4},
+                    {'type': 'layer', 'price_offset': 0.003, 'size_ratio': 0.6, 'order_type': 'limit'},
+                    {'type': 'layer', 'price_offset': 0.0, 'size_ratio': 0.4, 'order_type': 'market'},
                 ],
                 'risk': {
                     'stop_loss': 'trail_atr',
@@ -110,8 +109,8 @@ class StrategyRouter:
                 'name': 'range_play',
                 'bias': 'neutral',
                 'entries': [
-                    {'type': 'buy_limit', 'trigger': 'range_low', 'size_ratio': 0.5},
-                    {'type': 'sell_limit', 'trigger': 'range_high', 'size_ratio': 0.5},
+                    {'type': 'layer', 'price_offset': -0.004, 'size_ratio': 0.5, 'order_type': 'limit'},
+                    {'type': 'layer', 'price_offset': 0.004, 'size_ratio': 0.5, 'order_type': 'limit'},
                 ],
                 'risk': {
                     'stop_loss': 'tight_percent',
@@ -124,13 +123,16 @@ class StrategyRouter:
                 'name': 'event_defense',
                 'bias': 'neutral',
                 'entries': [
-                    {'type': 'suspend_new_orders'},
-                    {'type': 'hedge', 'trigger': 'vol_spike'}
+                    {'type': 'suspend_new_orders'}
                 ],
                 'risk': {
                     'stop_loss': 'reduce_only',
                     'take_profit': 'n/a',
-                    'max_position_pct': 0.1
+                    'max_position_pct': 0.1,
+                    'circuit_breaker': {
+                        'enabled': True,
+                        'cooldown_seconds': 900
+                    }
                 },
                 'notes': ['事件期以风险控制为主，可触发熔断']
             },
@@ -141,4 +143,4 @@ class StrategyRouter:
                 'risk': {'stop_loss': 'standard', 'max_position_pct': 0.1},
                 'notes': ['数据不足，保持观望']
             }
-        }
+        })
