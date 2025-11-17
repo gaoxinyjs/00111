@@ -87,13 +87,15 @@ class OKXClient:
             self.logger.warning("OKX API密钥未配置，请检查配置")
 
     def _resolve_pos_side(self, requested_pos_side: Optional[str], order_side: Optional[str] = None,
-                          for_closing: bool = False) -> Optional[str]:
+                          for_closing: bool = False, allow_net: bool = True) -> Optional[str]:
         """
         根据当前持仓模式和订单信息确定posSide
         """
         if self.trade_mode not in ['cross', 'isolated']:
             return None
         if self.position_mode == 'net':
+            if not allow_net:
+                return None
             return 'net'
         if requested_pos_side in ['long', 'short']:
             return requested_pos_side
@@ -924,7 +926,7 @@ class OKXClient:
         
         # 合约交易：自动匹配持仓方向
         if self.trade_mode in ['cross', 'isolated']:
-            effective_pos_side = self._resolve_pos_side(pos_side, side, reduce_only)
+            effective_pos_side = self._resolve_pos_side(pos_side, side, reduce_only, allow_net=True)
             if effective_pos_side:
                 order_data['posSide'] = effective_pos_side
         
@@ -982,7 +984,7 @@ class OKXClient:
             # 合约交易：设置持仓方向（止损和止盈共享同一个 posSide）
             if self.trade_mode in ['cross', 'isolated']:
                 closing_side = 'sell' if side == 'buy' else 'buy'
-                effective_pos_side = self._resolve_pos_side(pos_side, closing_side, True)
+                effective_pos_side = self._resolve_pos_side(pos_side, closing_side, True, allow_net=False)
                 if effective_pos_side:
                     algo_order['posSide'] = effective_pos_side
                 algo_order['reduceOnly'] = 'true'  # 止损和止盈都是平仓
@@ -1062,7 +1064,7 @@ class OKXClient:
         
         # 合约交易：设置持仓方向
         if self.trade_mode in ['cross', 'isolated']:
-            effective_pos_side = self._resolve_pos_side(pos_side, side, True)
+            effective_pos_side = self._resolve_pos_side(pos_side, side, True, allow_net=False)
             if effective_pos_side:
                 order_data['posSide'] = effective_pos_side
             # 止损是平仓，设置reduceOnly
@@ -1133,7 +1135,7 @@ class OKXClient:
         
         # 合约交易：设置持仓方向
         if self.trade_mode in ['cross', 'isolated']:
-            effective_pos_side = self._resolve_pos_side(pos_side, side, True)
+            effective_pos_side = self._resolve_pos_side(pos_side, side, True, allow_net=False)
             if effective_pos_side:
                 order_data['posSide'] = effective_pos_side
             # 止盈是平仓，设置reduceOnly
