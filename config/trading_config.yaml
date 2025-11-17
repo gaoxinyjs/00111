@@ -159,6 +159,11 @@ scene_detection:
   bb_width_threshold: 0.05
   event_score_threshold: 0.6
 
+event_circuit_breaker:
+  enabled: true
+  default_cooldown_seconds: 900
+  status_log_interval_seconds: 60
+
 # 可选：自定义策略模板（若为空则使用内置默认模板）
 strategy_templates:
   scenes:
@@ -178,6 +183,18 @@ strategy_templates:
         stop_loss: "trail_atr"
         take_profit: "partial_scale_out"
         max_position_pct: 0.25
+    event:
+      name: "event_defense"
+      bias: "neutral"
+      entries:
+        - type: "suspend_new_orders"
+      risk:
+        stop_loss: "reduce_only"
+        take_profit: "n/a"
+        max_position_pct: 0.1
+        circuit_breaker:
+          enabled: true
+          cooldown_seconds: 900
 
 # 信号评分配置
 signal_scoring:

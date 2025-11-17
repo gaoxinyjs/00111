@@ -702,7 +702,7 @@ class DecisionEngine:
                 )
                 if strategy_plan:
                     decision._strategy_plan = strategy_plan.to_dict()
-                    decision = self.strategy_executor.apply(strategy_plan, decision, market_data)
+                    decision = self.strategy_executor.apply(strategy_plan, decision, market_data, current_position)
                     if decision is None:
                         return None
                 
@@ -1059,7 +1059,7 @@ class DecisionEngine:
             )
         if strategy_plan:
             decision._strategy_plan = strategy_plan.to_dict()
-            decision = self.strategy_executor.apply(strategy_plan, decision, market_data)
+            decision = self.strategy_executor.apply(strategy_plan, decision, market_data, current_position)
             if decision is None:
                 return None
         decision._fallback = {

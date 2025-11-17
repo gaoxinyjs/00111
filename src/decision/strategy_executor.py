@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 
 from ..core.logger import get_logger
 from .strategy_router import StrategyPlan
-from ..core.exception import StrategyException
+from ..core.exception import StrategyException, CircuitBreakerTriggered
 
 
 @dataclass
@@ -27,7 +27,8 @@ class StrategyExecutor:
     def __init__(self):
         self.logger = get_logger("strategy_executor")
 
-    def apply(self, plan: Optional[StrategyPlan], decision, market_data: Dict[str, Any]):
+    def apply(self, plan: Optional[StrategyPlan], decision, market_data: Dict[str, Any],
+              current_position: Optional[Dict[str, Any]] = None):
         if not plan or not decision:
             return decision
 
@@ -84,7 +85,14 @@ class StrategyExecutor:
                 decision._layered_entries = final_entries
                 decision.position_size = min(decision.position_size, adjusted_size)
 
+        manage_cfg = plan.risk.get('manage_existing')
+        if manage_cfg and current_position and current_position.get('size', 0) > 0:
+            self._apply_manage_existing(manage_cfg, decision, current_position)
+
         # 事件场景仅允许减仓
+        if plan.scene_type == 'event' and plan.risk.get('circuit_breaker', {}).get('enabled', True):
+            cooldown = int(plan.risk.get('circuit_breaker', {}).get('cooldown_seconds', 900))
+            raise CircuitBreakerTriggered(f"{plan.name} 触发事件熔断", cooldown)
         if plan.scene_type == 'event' and decision.action in ['long', 'short']:
             raise StrategyException("事件场景禁止开仓")
 
@@ -153,3 +161,34 @@ class StrategyExecutor:
             return float(value)
         except (TypeError, ValueError):
             return default
+
+    def _apply_manage_existing(self, cfg: Dict[str, Any], decision, current_position: Dict[str, Any]):
+        mode = cfg.get('mode')
+        ratio = self._float(cfg.get('ratio'), default=0.5)
+        ratio = max(0.05, min(1.0, ratio))
+        current_side = self._normalize_side(current_position.get('side'))
+        if current_side == 'flat':
+            return
+        if mode == 'reduce':
+            decision.action = 'close_long' if current_side == 'long' else 'close_short'
+            decision.position_side = current_side
+            decision.position_size = ratio
+            decision.reasoning = f"{decision.reasoning} | 减仓{ratio:.2f}"
+        elif mode == 'add':
+            decision.action = 'long' if current_side == 'long' else 'short'
+            decision.position_side = current_side
+            decision.position_size = min(decision.position_size, ratio)
+            decision.reasoning = f"{decision.reasoning} | 加仓{decision.position_size:.2f}"
+
+    @staticmethod
+    def _normalize_side(side: Optional[str]) -> str:
+        if not side:
+            return 'flat'
+        side = str(side).lower()
+        if side == 'buy':
+            return 'long'
+        if side == 'sell':
+            return 'short'
+        if side in ['long', 'short']:
+            return side
+        return 'flat'

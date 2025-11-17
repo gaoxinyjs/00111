@@ -1,27 +1,3 @@
-    def _clone_decision(self, decision, entry_meta: Dict[str, Any]):
-        from ..decision.decision_engine import TradingDecision
-        price = entry_meta.get('price') or decision.price
-        size_ratio = entry_meta.get('size_ratio', 1.0)
-        entry_decision = TradingDecision(
-            symbol=decision.symbol,
-            action=decision.action,
-            position_size=decision.position_size * size_ratio,
-            position_side=decision.position_side,
-            price=price,
-            stop_loss=decision.stop_loss,
-            take_profit=decision.take_profit,
-            confidence=decision.confidence,
-            reasoning=decision.reasoning,
-            signals=decision.signals,
-            risk_assessment=decision.risk_assessment
-        )
-        entry_decision._is_deepseek_decision = getattr(decision, '_is_deepseek_decision', False)
-        entry_decision._deepseek_direction = getattr(decision, '_deepseek_direction', None)
-        entry_decision._strategy_plan = getattr(decision, '_strategy_plan', None)
-        entry_decision._fallback = getattr(decision, '_fallback', {})
-        entry_decision._record_id = getattr(decision, '_record_id', None)
-        entry_decision._layer_entry = entry_meta
-        return entry_decision
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -32,7 +8,7 @@ import asyncio
 import json
 from copy import deepcopy
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger, get_trade_logger
 from ..data.data_collector import DataCollector
@@ -46,7 +22,7 @@ from ..risk.position_controller import PositionController
 from ..trading.position_manager import PositionManager
 from ..monitoring.profit_statistics import ProfitStatistics
 from ..data.okx_client import get_okx_client
-from ..core.exception import TradingSystemException
+from ..core.exception import TradingSystemException, CircuitBreakerTriggered
 
 
 class TradingEngine:
@@ -123,6 +99,14 @@ class TradingEngine:
         # 15分钟超时配置（秒）
         self.force_close_timeout = 15 * 60  # 15分钟 = 900秒（强制平仓）
         self.pending_order_timeout = 15 * 60  # 15分钟 = 900秒（挂单超时）
+
+        circuit_cfg = self.config_mgr.get_config('trading', 'event_circuit_breaker', {}) or {}
+        self.event_circuit_enabled = circuit_cfg.get('enabled', True)
+        self.event_circuit_default_cooldown = circuit_cfg.get('default_cooldown_seconds', 900)
+        self.event_circuit_status_interval = circuit_cfg.get('status_log_interval_seconds', 60)
+        self._event_circuit_until: Optional[datetime] = None
+        self._event_circuit_reason: Optional[str] = None
+        self._event_circuit_next_log: Optional[datetime] = None
         
         # 从配置读取是否启用自动交易
         auto_trading_config = self.config_mgr.get_config('trading', 'auto_trading', {})
@@ -363,6 +347,48 @@ class TradingEngine:
             self.logger.error(f"收集市场数据失败: {e}")
         
         return market_data
+
+    def _activate_event_circuit(self, reason: str, cooldown_seconds: Optional[int] = None):
+        if not self.event_circuit_enabled:
+            return
+        duration = cooldown_seconds or self.event_circuit_default_cooldown
+        until = datetime.utcnow() + timedelta(seconds=duration)
+        if self._event_circuit_until and self._event_circuit_until > until:
+            until = self._event_circuit_until
+        self._event_circuit_until = until
+        self._event_circuit_reason = reason
+        self._event_circuit_next_log = None
+        self.logger.warning(
+            f"⛔ [事件熔断启动] {reason}，将在约{duration}秒后自动检查是否恢复"
+        )
+
+    def _maybe_release_event_circuit(self):
+        if self._event_circuit_until and datetime.utcnow() >= self._event_circuit_until:
+            self.logger.info("✅ [事件熔断解除] 已恢复正常交易")
+            self._event_circuit_until = None
+            self._event_circuit_reason = None
+            self._event_circuit_next_log = None
+
+    def _is_event_circuit_active(self) -> bool:
+        if not self._event_circuit_until:
+            return False
+        if datetime.utcnow() >= self._event_circuit_until:
+            self._maybe_release_event_circuit()
+            return False
+        return True
+
+    def _log_event_circuit_block(self, symbol: str):
+        if not self._is_event_circuit_active():
+            return
+        now = datetime.utcnow()
+        if self._event_circuit_next_log and now < self._event_circuit_next_log:
+            return
+        remaining = (self._event_circuit_until - now).total_seconds() if self._event_circuit_until else 0
+        self.logger.warning(
+            f"⚠️ [事件熔断中] {symbol}: 阻止新单，原因={self._event_circuit_reason}, "
+            f"剩余≈{int(remaining)}秒"
+        )
+        self._event_circuit_next_log = now + timedelta(seconds=self.event_circuit_status_interval)
     
     def _update_market_data_cache(self, market_data: Dict[str, Dict[str, Any]],
                                   symbols: Optional[List[str]] = None):
@@ -1019,20 +1045,19 @@ class TradingEngine:
         
         for symbol, symbol_signals in signals_by_symbol.items():
             try:
-                # 获取当前持仓
                 current_position = positions.get(symbol)
-                
-                # 获取市场数据
                 symbol_market_data = market_data.get(symbol, {})
-                
-                # 生成决策
                 decision = self.decision_engine.make_decision(
                     symbol, symbol_market_data, current_position
                 )
-                
                 if decision:
                     decisions.append(decision)
             
+            except CircuitBreakerTriggered as cb:
+                self.logger.warning(
+                    f"⚠️ [事件熔断触发] {symbol}: {cb.reason}，暂停新单 {cb.cooldown_seconds}s"
+                )
+                self._activate_event_circuit(cb.reason, cb.cooldown_seconds)
             except Exception as e:
                 self.logger.error(f"生成{symbol}决策失败: {e}")
         
@@ -1048,6 +1073,7 @@ class TradingEngine:
         if not self.trading_enabled:
             self.logger.info("交易已禁用，跳过执行")
             return
+        self._maybe_release_event_circuit()
         
         for decision in decisions:
             try:
@@ -1070,6 +1096,10 @@ class TradingEngine:
                                 is_deepseek_decision = True
                                 break
                 
+                if self._is_event_circuit_active() and decision.action in ['long', 'short', 'buy', 'sell']:
+                    self._log_event_circuit_block(symbol)
+                    continue
+
                 # 如果是DeepSeek决策，跳过所有检查，直接执行
                 if is_deepseek_decision:
                     self.logger.info(
@@ -1314,6 +1344,31 @@ class TradingEngine:
             
             except Exception as e:
                 self.logger.error(f"执行交易失败 {decision.symbol}: {e}")
+    
+    def _clone_decision(self, decision, entry_meta: Dict[str, Any]):
+        from ..decision.decision_engine import TradingDecision
+        price = entry_meta.get('price') or decision.price
+        size_ratio = entry_meta.get('size_ratio', 1.0)
+        entry_decision = TradingDecision(
+            symbol=decision.symbol,
+            action=decision.action,
+            position_size=decision.position_size * size_ratio,
+            position_side=decision.position_side,
+            price=price,
+            stop_loss=decision.stop_loss,
+            take_profit=decision.take_profit,
+            confidence=decision.confidence,
+            reasoning=decision.reasoning,
+            signals=decision.signals,
+            risk_assessment=decision.risk_assessment
+        )
+        entry_decision._is_deepseek_decision = getattr(decision, '_is_deepseek_decision', False)
+        entry_decision._deepseek_direction = getattr(decision, '_deepseek_direction', None)
+        entry_decision._strategy_plan = getattr(decision, '_strategy_plan', None)
+        entry_decision._fallback = getattr(decision, '_fallback', {})
+        entry_decision._record_id = getattr(decision, '_record_id', None)
+        entry_decision._layer_entry = entry_meta
+        return entry_decision
     
     async def _check_position_adjustments(self, market_data: Dict[str, Dict[str, Any]],
                                           enable_ai_analysis: bool = True,
