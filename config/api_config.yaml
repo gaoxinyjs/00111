@@ -6,6 +6,7 @@ okx:
   base_url: "https://www.okx.com"
   test_mode: true  # 是否使用测试环境（模拟盘）
   trade_mode: "cross"  # 交易模式：cross全仓保证金（合约）, isolated逐仓保证金（合约）, cash现货
+  position_mode: "net"  # 持仓模式：net单向持仓，long_short对冲持仓
   
   # 限流配置
   rate_limit:

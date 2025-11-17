@@ -62,6 +62,9 @@ class OKXClient:
         self.base_url = okx_config.get('base_url', 'https://www.okx.com')
         self.test_mode = okx_config.get('test_mode', False)
         self.trade_mode = okx_config.get('trade_mode', 'cross')  # 交易模式：cross全仓（合约）, isolated逐仓（合约）, cash现货
+        self.position_mode = okx_config.get('position_mode', 'net').lower()  # 持仓模式：net单向、long_short对冲
+        if self.position_mode not in ['net', 'long_short']:
+            self.position_mode = 'net'
         
         # 限流配置
         rate_limit = okx_config.get('rate_limit', {})
@@ -82,6 +85,23 @@ class OKXClient:
         
         if not all([self.api_key, self.secret_key, self.passphrase]):
             self.logger.warning("OKX API密钥未配置，请检查配置")
+
+    def _resolve_pos_side(self, requested_pos_side: Optional[str], order_side: Optional[str] = None,
+                          for_closing: bool = False) -> Optional[str]:
+        """
+        根据当前持仓模式和订单信息确定posSide
+        """
+        if self.trade_mode not in ['cross', 'isolated']:
+            return None
+        if self.position_mode == 'net':
+            return 'net'
+        if requested_pos_side in ['long', 'short']:
+            return requested_pos_side
+        if order_side == 'buy':
+            return 'short' if for_closing else 'long'
+        if order_side == 'sell':
+            return 'long' if for_closing else 'short'
+        return None
 
     def _infer_inst_type(self, symbol: Optional[str]) -> str:
         """根据交易对推断产品类型"""
@@ -902,19 +922,11 @@ class OKXClient:
         
         self.logger.debug(f"[下单数量格式化] {symbol}: 原始={size}, Decimal={size_decimal if isinstance(size, (int, float)) else 'N/A'}, 格式化后={size_str}")
         
-        # 合约交易：必须设置持仓方向
+        # 合约交易：自动匹配持仓方向
         if self.trade_mode in ['cross', 'isolated']:
-            # 合约交易必须指定posSide
-            # 对于全仓/逐仓模式，使用"net"（单向持仓）或"long"/"short"（双向持仓）
-            # 优先使用"net"（单向持仓模式），如果明确指定了posSide则使用指定的值
-            if pos_side:
-                # 如果指定了posSide，使用指定的值（long或short）
-                order_data['posSide'] = pos_side
-            else:
-                # 如果没有指定posSide，使用"net"（单向持仓模式）
-                # 或者根据side推断（buy->long, sell->short）
-                # 先尝试"net"模式
-                order_data['posSide'] = 'net'  # 单向持仓模式
+            effective_pos_side = self._resolve_pos_side(pos_side, side, reduce_only)
+            if effective_pos_side:
+                order_data['posSide'] = effective_pos_side
         
         # 合约交易：平仓订单
         if reduce_only:
@@ -969,10 +981,10 @@ class OKXClient:
             
             # 合约交易：设置持仓方向（止损和止盈共享同一个 posSide）
             if self.trade_mode in ['cross', 'isolated']:
-                if pos_side:
-                    algo_order['posSide'] = pos_side
-                else:
-                    algo_order['posSide'] = 'net'
+                closing_side = 'sell' if side == 'buy' else 'buy'
+                effective_pos_side = self._resolve_pos_side(pos_side, closing_side, True)
+                if effective_pos_side:
+                    algo_order['posSide'] = effective_pos_side
                 algo_order['reduceOnly'] = 'true'  # 止损和止盈都是平仓
             
             # 将止损和止盈合并到一个对象中
@@ -1050,29 +1062,9 @@ class OKXClient:
         
         # 合约交易：设置持仓方向
         if self.trade_mode in ['cross', 'isolated']:
-            # 对于止损订单（平仓），posSide 必须明确指定，不能为空
-            # 如果未指定，根据 side 推断：sell 表示平多仓(long)，buy 表示平空仓(short)
-            if pos_side:
-                # 确保pos_side是有效的值（long, short, net）
-                if pos_side in ['long', 'short', 'net']:
-                    order_data['posSide'] = pos_side
-                else:
-                    # 如果值无效，根据side推断
-                    if side == 'sell':
-                        order_data['posSide'] = 'long'  # 卖出平多仓
-                    elif side == 'buy':
-                        order_data['posSide'] = 'short'  # 买入平空仓
-                    else:
-                        order_data['posSide'] = 'net'
-            else:
-                # 根据 side 推断：sell 表示平多仓，buy 表示平空仓
-                if side == 'sell':
-                    order_data['posSide'] = 'long'  # 卖出平多仓
-                elif side == 'buy':
-                    order_data['posSide'] = 'short'  # 买入平空仓
-                else:
-                    # 如果无法推断，使用 net（可能在某些情况下不支持）
-                    order_data['posSide'] = 'net'
+            effective_pos_side = self._resolve_pos_side(pos_side, side, True)
+            if effective_pos_side:
+                order_data['posSide'] = effective_pos_side
             # 止损是平仓，设置reduceOnly
             order_data['reduceOnly'] = 'true'
         
@@ -1141,29 +1133,9 @@ class OKXClient:
         
         # 合约交易：设置持仓方向
         if self.trade_mode in ['cross', 'isolated']:
-            # 对于止盈订单（平仓），posSide 必须明确指定，不能为空
-            # 如果未指定，根据 side 推断：sell 表示平多仓(long)，buy 表示平空仓(short)
-            if pos_side:
-                # 确保pos_side是有效的值（long, short, net）
-                if pos_side in ['long', 'short', 'net']:
-                    order_data['posSide'] = pos_side
-                else:
-                    # 如果值无效，根据side推断
-                    if side == 'sell':
-                        order_data['posSide'] = 'long'  # 卖出平多仓
-                    elif side == 'buy':
-                        order_data['posSide'] = 'short'  # 买入平空仓
-                    else:
-                        order_data['posSide'] = 'net'
-            else:
-                # 根据 side 推断：sell 表示平多仓，buy 表示平空仓
-                if side == 'sell':
-                    order_data['posSide'] = 'long'  # 卖出平多仓
-                elif side == 'buy':
-                    order_data['posSide'] = 'short'  # 买入平空仓
-                else:
-                    # 如果无法推断，使用 net（可能在某些情况下不支持）
-                    order_data['posSide'] = 'net'
+            effective_pos_side = self._resolve_pos_side(pos_side, side, True)
+            if effective_pos_side:
+                order_data['posSide'] = effective_pos_side
             # 止盈是平仓，设置reduceOnly
             order_data['reduceOnly'] = 'true'
         
