@@ -5,11 +5,12 @@
 整合数据采集、信号生成、决策、执行、风险管理的完整交易流程
 """
 import asyncio
+import json
 from copy import deepcopy
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from ..core.config_manager import get_config_manager
-from ..core.logger import get_logger
+from ..core.logger import get_logger, get_trade_logger
 from ..data.data_collector import DataCollector
 from ..data.data_processor import DataProcessor
 from ..analysis.signal_generator import SignalGenerator
@@ -31,6 +32,7 @@ class TradingEngine:
         """初始化交易引擎"""
         self.config_mgr = get_config_manager()
         self.logger = get_logger("trading_engine")
+        self.trade_logger = get_trade_logger()
         
         # 初始化各个模块
         trading_pairs_cfg = self.config_mgr.get_config('trading', 'trading_pairs') or []
@@ -1238,6 +1240,18 @@ class TradingEngine:
                                     'entry_reason': decision.reasoning or 'open',
                                     'ai_analysis': ai_analysis
                                 }
+                            self._log_trade_event('open', {
+                                'symbol': symbol,
+                                'order_id': order.order_id,
+                                'action': decision.action,
+                                'position_side': decision.position_side,
+                                'position_size': order.filled_size,
+                                'entry_price': fill_price,
+                                'confidence': decision.confidence,
+                                'reason': decision.reasoning,
+                                'record_id': getattr(decision, '_record_id', None),
+                                'entry_time': fill_time.isoformat()
+                            })
                             self.logger.info(
                                 f"📌 [记录开仓时间] {symbol}: {decision.position_side} | "
                                 f"开仓时间={fill_time.strftime('%Y-%m-%d %H:%M:%S')} | "
@@ -2374,6 +2388,8 @@ class TradingEngine:
             
             trade_profit = self.profit_statistics.calculate_trade_profit(trade_data)
             
+            holding_hours = None
+            exit_reason = 'close'
             if trade_info and trade_info.get('record_id'):
                 holding_hours = (exit_time - entry_time).total_seconds() / 3600 if entry_time else 0.0
                 exit_reason = trade_info.get('exit_reason', 'close')
@@ -2394,6 +2410,22 @@ class TradingEngine:
                 f"交易收益: {trade_profit.symbol} {trade_profit.trade_id}, "
                 f"收益={trade_profit.net_profit:.2f}, 收益率={trade_profit.return_rate:.2f}%"
             )
+            self._log_trade_event('close', {
+                'trade_id': trade_id,
+                'symbol': symbol,
+                'position_side': position_side,
+                'quantity': quantity,
+                'entry_price': entry_price,
+                'exit_price': exit_price,
+                'fees': fees,
+                'net_profit': trade_profit.net_profit,
+                'profit_pct': trade_profit.profit_pct,
+                'return_rate': trade_profit.return_rate,
+                'entry_time': entry_time.isoformat() if entry_time else None,
+                'exit_time': exit_time.isoformat() if exit_time else None,
+                'holding_hours': holding_hours,
+                'exit_reason': exit_reason
+            })
         
         except Exception as e:
             self.logger.error(f"计算交易收益失败: {e}")
@@ -2424,6 +2456,20 @@ class TradingEngine:
         """禁用交易"""
         self.trading_enabled = False
         self.logger.info("交易已禁用")
+
+    def _log_trade_event(self, event_type: str, payload: Dict[str, Any]):
+        """写入专属交易日志"""
+        if not self.trade_logger:
+            return
+        try:
+            entry = {
+                'event': event_type,
+                'timestamp': datetime.utcnow().isoformat(),
+                **payload
+            }
+            self.trade_logger.info(json.dumps(entry, ensure_ascii=False))
+        except Exception as err:
+            self.logger.debug(f"写入交易日志失败: {err}")
 
 
 if __name__ == "__main__":

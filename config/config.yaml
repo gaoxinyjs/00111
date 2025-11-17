@@ -13,6 +13,7 @@ logging:
     trading: "logs/trading/trading.log"
     system: "logs/system/system.log"
     error: "logs/error/error.log"
+    trade_records: "logs/trading/trade_records.log"
   rotation:
     max_bytes: 10485760  # 10MB
     backup_count: 5

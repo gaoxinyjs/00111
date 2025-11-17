@@ -156,6 +156,7 @@ class Logger:
 
 # 全局日志记录器实例
 _logger: Optional[Logger] = None
+_trade_logger: Optional[logging.Logger] = None
 
 
 def get_logger(name: str = "trading_system") -> Logger:
@@ -164,6 +165,55 @@ def get_logger(name: str = "trading_system") -> Logger:
     if _logger is None:
         _logger = Logger(name)
     return _logger
+
+
+def get_trade_logger() -> Optional[logging.Logger]:
+    """专用交易记录日志"""
+    global _trade_logger
+    if _trade_logger is not None:
+        return _trade_logger
+    
+    config = get_config_manager()
+    try:
+        log_file = config.get_config('main', 'logging.file.trade_records')
+    except (KeyError, TypeError):
+        log_file = None
+    
+    logger = logging.getLogger("trade_records")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    logger.handlers.clear()
+    
+    if log_file:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            rotation = config.get_config('main', 'logging.rotation') or {}
+            max_bytes = rotation.get('max_bytes', 10485760)
+            backup_count = rotation.get('backup_count', 5)
+        except (KeyError, TypeError):
+            max_bytes = 10485760
+            backup_count = 5
+        
+        handler = RotatingFileHandler(
+            log_path,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding='utf-8'
+        )
+        formatter = logging.Formatter(
+            '%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    else:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logger.addHandler(console_handler)
+    
+    _trade_logger = logger
+    return _trade_logger
 
 
 if __name__ == "__main__":
