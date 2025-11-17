@@ -639,11 +639,19 @@ class OKXClient:
     async def async_get_liquidation_orders(self, symbol: str, limit: int = 100) -> List[Dict[str, Any]]:
         """
         获取强平订单（已成交）
+
+        注意：
+        - OKX 文档要求在该接口中必须提供 uly 或 instFamily（二选一），
+          不能仅使用 instId，否则会返回 400 错误：
+          "Either parameter uly or instFamily is required"
+        - 这里通过合约ID提取底层标的作为 uly，例如：
+          SOL-USDT-SWAP -> SOL-USDT
         """
         endpoint = "/api/v5/public/liquidation-orders"
+        underlying = self._extract_underlying(symbol)
         params = {
             'instType': self._infer_inst_type(symbol),
-            'instId': symbol,
+            'uly': underlying,
             'state': 'filled',
             'limit': limit
         }
@@ -879,10 +887,31 @@ class OKXClient:
         endpoint = "/api/v5/trade/order"
         
         # 格式化数量字符串，确保精度正确且是lotSize的倍数
-        from decimal import Decimal
+        from decimal import Decimal, ROUND_DOWN
         if isinstance(size, (int, float)):
             # 使用Decimal确保精度，避免浮点数误差
             size_decimal = Decimal(str(size))
+            
+            # 获取合约信息，验证数量是否是 lotSize 的倍数
+            try:
+                instrument_info = self.get_instrument_info(symbol)
+                if instrument_info:
+                    lot_size = float(instrument_info.get('lotSz', 1.0))
+                    if lot_size > 0:
+                        lot_size_decimal = Decimal(str(lot_size))
+                        # 检查是否是 lotSize 的整数倍
+                        remainder = size_decimal % lot_size_decimal
+                        if remainder != 0:
+                            # 如果不是整数倍，向下取整到最近的倍数
+                            lots = (size_decimal / lot_size_decimal).quantize(Decimal('1'), rounding=ROUND_DOWN)
+                            size_decimal = lots * lot_size_decimal
+                            self.logger.warning(
+                                f"⚠️ {symbol}: 数量 {size} 不是 lotSize {lot_size} 的倍数，"
+                                f"已调整为 {size_decimal}"
+                            )
+            except Exception as e:
+                self.logger.debug(f"验证数量精度失败 {symbol}: {e}，继续使用原始数量")
+            
             # 使用normalize()移除尾随零
             size_str = str(size_decimal.normalize())
             
@@ -908,12 +937,16 @@ class OKXClient:
             # 对于全仓/逐仓模式，使用"net"（单向持仓）或"long"/"short"（双向持仓）
             # 优先使用"net"（单向持仓模式），如果明确指定了posSide则使用指定的值
             if pos_side:
-                # 如果指定了posSide，使用指定的值（long或short）
-                order_data['posSide'] = pos_side
+                # 如果指定了posSide，使用指定的值（long、short 或 net）
+                # 确保值是有效的
+                if pos_side in ['long', 'short', 'net']:
+                    order_data['posSide'] = pos_side
+                else:
+                    # 如果值无效，使用 'net' 作为默认值
+                    self.logger.warning(f"⚠️ {symbol}: pos_side={pos_side} 无效，使用 'net' 作为默认值")
+                    order_data['posSide'] = 'net'
             else:
                 # 如果没有指定posSide，使用"net"（单向持仓模式）
-                # 或者根据side推断（buy->long, sell->short）
-                # 先尝试"net"模式
                 order_data['posSide'] = 'net'  # 单向持仓模式
         
         # 合约交易：平仓订单
@@ -988,6 +1021,7 @@ class OKXClient:
             )
         
         # 记录订单参数（用于调试）
+        self.logger.info(f"🔍 [下单参数] {symbol}: side={side}, pos_side={pos_side}, reduce_only={reduce_only}, order_data={order_data}")
         self.logger.debug(f"[下单] 交易对: {symbol}, 订单参数: {order_data}")
         
         return self._request_sync('POST', endpoint, data=order_data)

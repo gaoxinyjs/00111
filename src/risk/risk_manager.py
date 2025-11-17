@@ -39,7 +39,8 @@ class RiskManager:
         self.last_reset_date: datetime = datetime.now().date()
     
     def check_risk_before_trade(self, symbol: str, position_size: float,
-                               market_data: Dict[str, Any]) -> bool:
+                               market_data: Dict[str, Any], 
+                               is_closing: bool = False) -> bool:
         """
         交易前风险检查
         
@@ -47,11 +48,17 @@ class RiskManager:
             symbol: 交易对符号
             position_size: 仓位大小
             market_data: 市场数据
+            is_closing: 是否为平仓操作（平仓操作跳过风险检查）
             
         Returns:
             是否通过风险检查
         """
         try:
+            # 平仓操作跳过风险检查（平仓是保护性操作，不会增加风险）
+            if is_closing:
+                self.logger.debug(f"{symbol}: 平仓操作，跳过风险检查")
+                return True
+            
             # 1. 检查单笔风险限制
             max_loss_per_trade = self.config_mgr.get_config('risk', 'risk_limits.max_loss_per_trade')
             estimated_loss = position_size * self.config_mgr.get_config('risk', 'stop_loss.default_stop_loss_pct')

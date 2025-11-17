@@ -337,8 +337,12 @@ class ExecutionEngine:
             # 只有在平仓或明确需要双向持仓时才使用long/short
             pos_side_for_order = None  # None表示使用"net"模式（单向持仓）
             if is_closing:
-                # 平仓时使用具体的posSide
-                pos_side_for_order = position_side
+                # 平仓时使用决策中指定的 posSide（可能是 'net' 或 'long'/'short'）
+                pos_side_for_order = decision.position_side
+                self.logger.info(
+                    f"🔍 [平仓订单] {symbol}: decision.position_side={decision.position_side}, "
+                    f"pos_side_for_order={pos_side_for_order}, is_closing={is_closing}"
+                )
             
             # 3.1. 准备止盈止损价格（在创建订单时设置）
             size = base_size_by_value
@@ -389,13 +393,40 @@ class ExecutionEngine:
                 if size <= 0:
                     self.logger.warning(f"最终下单数量无效，停止执行: size={size}")
                     return None
-            # 调整数量至交易所允许的精度
+            # 调整数量至交易所允许的精度（使用 Decimal 确保精度）
+            from decimal import Decimal, ROUND_DOWN, ROUND_UP
             if lot_size > 0:
-                lots = max(1, math.floor(size / lot_size))
-                size = lots * lot_size
+                # 使用 Decimal 进行精确计算，避免浮点数误差
+                size_decimal = Decimal(str(size))
+                lot_size_decimal = Decimal(str(lot_size))
+                # 向下取整到 lotSize 的倍数
+                lots = (size_decimal / lot_size_decimal).quantize(Decimal('1'), rounding=ROUND_DOWN)
+                if lots < 1:
+                    lots = Decimal('1')
+                size_decimal = lots * lot_size_decimal
+                size = float(size_decimal)
+            else:
+                size = float(size)
+            
+            # 确保不小于最小数量
             if size < min_size:
-                size = math.ceil(min_size / lot_size) * lot_size if lot_size > 0 else min_size
-            size = float(size)
+                if lot_size > 0:
+                    min_lots = math.ceil(min_size / lot_size)
+                    size = min_lots * lot_size
+                else:
+                    size = min_size
+            
+            # 最终验证：确保数量是 lotSize 的整数倍（使用 Decimal 精确计算）
+            if lot_size > 0:
+                size_decimal = Decimal(str(size))
+                lot_size_decimal = Decimal(str(lot_size))
+                remainder = size_decimal % lot_size_decimal
+                if remainder != 0:
+                    # 如果不是整数倍，向下取整到最近的倍数
+                    lots = (size_decimal / lot_size_decimal).quantize(Decimal('1'), rounding=ROUND_DOWN)
+                    size_decimal = lots * lot_size_decimal
+                    size = float(size_decimal)
+                    self.logger.warning(f"⚠️ {symbol}: 数量调整到 lotSize 的整数倍: {size:.4f}")
             position_value = size * entry_price_for_sl * ct_val
             self.logger.info(
                 f"[执行决策] {symbol}: {action_desc}({position_side}) | 仓位比例={decision.position_size:.2%} | "
@@ -711,18 +742,22 @@ class ExecutionEngine:
             
             # 4. 检查持仓
             if current_position:
-                current_pos_side = current_position.get('posSide', '')
+                # 获取原始的 posSide（保留原始值，用于平仓）
+                original_pos_side = current_position.get('posSide', 'net')
                 current_pos_size = float(current_position.get('pos', 0) or current_position.get('posSz', 0) or 0)
                 
-                # 规范化持仓方向
-                if current_pos_side == 'net':
-                    # 如果是net模式，根据持仓数量判断方向
+                # 规范化持仓方向（用于比较，但不改变原始 posSide）
+                if original_pos_side == 'net':
+                    # 如果是net模式，根据持仓数量判断方向（用于比较）
                     if current_pos_size > 0:
                         current_pos_side = 'long'
                     elif current_pos_size < 0:
                         current_pos_side = 'short'
                     else:
                         current_pos_side = None
+                else:
+                    # 如果不是 net 模式，直接使用 posSide
+                    current_pos_side = original_pos_side
                 
                 # 如果方向相同，不做任何处理
                 if current_pos_side == position_side:
@@ -737,14 +772,14 @@ class ExecutionEngine:
                 if current_pos_side and current_pos_side != position_side:
                     self.logger.warning(
                         f"⚠️ {symbol}: 持仓方向相反 | "
-                        f"当前持仓方向={current_pos_side}, 持仓量={current_pos_size:.4f} | "
+                        f"当前持仓方向={current_pos_side}, 原始posSide={original_pos_side}, 持仓量={current_pos_size:.4f} | "
                         f"新开仓方向={position_side} | 先平仓"
                     )
                     
-                    # 平仓
+                    # 平仓（传递原始 posSide，而不是转换后的方向）
                     try:
                         close_result = await self._close_opposite_position(
-                            symbol, current_position, current_pos_side
+                            symbol, current_position, original_pos_side  # 使用原始的 posSide
                         )
                         if close_result:
                             self.logger.info(
@@ -807,7 +842,22 @@ class ExecutionEngine:
                     pos_size = abs(pos_size)
             
             # 获取持仓方向（用于合约交易）
-            pos_side_for_close = position_side if position_side in ['long', 'short'] else None
+            # 优先使用实际持仓的 posSide（可能是 'net', 'long', 'short'）
+            actual_pos_side = position.get('posSide', None)
+            if actual_pos_side:
+                # 如果实际持仓有 posSide，使用它
+                pos_side_for_close = actual_pos_side
+            elif position_side in ['long', 'short']:
+                # 如果没有 posSide，但 position_side 是有效的，使用它
+                pos_side_for_close = position_side
+            else:
+                # 默认使用 'net'（单向持仓模式）
+                pos_side_for_close = 'net'
+            
+            self.logger.info(
+                f"🔍 [平仓相反方向持仓] {symbol}: position_side={position_side}, "
+                f"actual_pos_side={actual_pos_side}, pos_side_for_close={pos_side_for_close}"
+            )
             
             # 使用市价单平仓（快速平仓）
             size_str = str(Decimal(str(abs(pos_size))).normalize())
@@ -819,7 +869,7 @@ class ExecutionEngine:
                 order_type='market',  # 市价单，快速平仓
                 size=abs(pos_size),
                 price=None,
-                position_side=pos_side_for_close,
+                position_side=pos_side_for_close,  # 使用正确的 posSide
                 is_closing=True  # 平仓
             )
             

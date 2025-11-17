@@ -5,7 +5,9 @@
 整合数据采集、信号生成、决策、执行、风险管理的完整交易流程
 """
 import asyncio
+import json
 from copy import deepcopy
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from ..core.config_manager import get_config_manager
@@ -93,6 +95,10 @@ class TradingEngine:
         
         # 跟踪已开仓的交易记录信息，用于平仓写入结果
         self.active_trade_records: Dict[str, Dict[str, Any]] = {}
+        
+        # 交易记录日志目录
+        self.trade_log_dir = Path("logs/trades")
+        self.trade_log_dir.mkdir(parents=True, exist_ok=True)
         
         # 15分钟超时配置（秒）
         self.force_close_timeout = 15 * 60  # 15分钟 = 900秒（强制平仓）
@@ -1071,11 +1077,14 @@ class TradingEngine:
                         )
                         continue
                     
-                    # 风险检查
+                    # 风险检查（平仓操作跳过风险检查，因为平仓是保护性操作，不会增加风险）
+                    is_closing = self._is_closing_position(symbol, decision.action)
+                    self.logger.info(f"🔍 [风险检查判断] {symbol}: action={decision.action}, is_closing={is_closing}")
+                    
                     position_size = decision.position_size
                     market_data = {'price': decision.price or 0, 'volatility': 0.25}
                     
-                    if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data):
+                    if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data, is_closing=is_closing):
                         self.logger.warning(f"{symbol}: 风险检查未通过，拒绝交易")
                         continue
                 
@@ -1210,16 +1219,16 @@ class TradingEngine:
                         fill_price = order.average_price or order.filled_price or decision.price or symbol_market_data.get('price', 0)
                         fill_time = order.executed_at or datetime.now()
                         
-                        # 更新决策引擎的交易时间（用于15分钟间隔检查）
-                        self.decision_engine.trade_stats['last_trade_time'] = datetime.now()
-                        self.logger.debug(
-                            f"⏰ [更新交易时间] {symbol}: "
-                            f"上次交易时间={datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, "
-                            f"下次可在15分钟后生成新决策"
-                        )
-                        
                         # 记录开仓时间（如果是开仓订单）
                         if not self._is_closing_position(symbol, decision.action):
+                            # 只有开仓时才更新决策引擎的交易时间（用于15分钟间隔检查）
+                            # 平仓后不受限制，可以随时开仓
+                            self.decision_engine.trade_stats['last_trade_time'] = datetime.now()
+                            self.logger.debug(
+                                f"⏰ [更新交易时间] {symbol}: "
+                                f"上次开仓时间={datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, "
+                                f"下次可在15分钟后生成新决策"
+                            )
                             self.position_entry_times[symbol] = {
                                 'entry_time': fill_time,
                                 'position_side': decision.position_side,
@@ -1243,14 +1252,19 @@ class TradingEngine:
                                 f"开仓时间={fill_time.strftime('%Y-%m-%d %H:%M:%S')} | "
                                 f"将在15分钟后检查是否强制平仓"
                             )
+                            
+                            # 记录开仓信息到交易日志
+                            self._write_trade_log_entry(symbol, decision, order, fill_price, fill_time)
                         else:
                             # 这是平仓订单，清除开仓时间记录
+                            # 注意：平仓时不更新 last_trade_time，所以平仓后可以随时开仓
                             if symbol in self.position_entry_times:
                                 entry_time = self.position_entry_times[symbol].get('entry_time')
                                 hold_duration = (fill_time - entry_time).total_seconds() / 60 if entry_time else 0
                                 del self.position_entry_times[symbol]
                                 self.logger.info(
-                                    f"✅ [平仓清除时间记录] {symbol}: 持仓时长={hold_duration:.2f}分钟"
+                                    f"✅ [平仓清除时间记录] {symbol}: 持仓时长={hold_duration:.2f}分钟 | "
+                                    f"平仓后不受交易频率限制，可以随时开仓"
                                 )
                         
                         # 计算收益（如果是平仓）
@@ -1264,6 +1278,56 @@ class TradingEngine:
                                 'position_side': decision.position_side
                             })
                             await self._calculate_profit(order, trade_info)
+                            
+                            # 平仓成功后，立即生成下一次交易决策
+                            self.logger.info(
+                                f"🔄 [平仓后立即决策] {symbol}: 平仓成功，立即生成下一次交易决策（跳过交易频率限制）"
+                            )
+                            
+                            # 等待一小段时间确保平仓订单完全成交
+                            await asyncio.sleep(2)
+                            
+                            # 立即生成下一次交易决策
+                            try:
+                                # 临时保存并清除 last_trade_time，以跳过交易频率限制
+                                saved_last_trade_time = self.decision_engine.trade_stats.get('last_trade_time')
+                                self.decision_engine.trade_stats['last_trade_time'] = None
+                                
+                                try:
+                                    # 获取最新市场数据
+                                    latest_market_data = await self._collect_market_data()
+                                    self._update_market_data_cache(latest_market_data)
+                                    symbol_market_data = latest_market_data.get(symbol, {})
+                                    
+                                    if symbol_market_data:
+                                        # 生成信号
+                                        all_signals = await self._generate_signals({symbol: symbol_market_data})
+                                        
+                                        # 过滤信号
+                                        filtered_signals = self.signal_filter.filter_signals(all_signals)
+                                        
+                                        # 生成决策（此时不会受到交易频率限制）
+                                        new_decisions = await self._make_decisions(
+                                            {symbol: symbol_market_data},
+                                            filtered_signals
+                                        )
+                                        
+                                        if new_decisions:
+                                            self.logger.info(
+                                                f"✅ [平仓后立即决策] {symbol}: 已生成新的交易计划，准备执行"
+                                            )
+                                            # 立即执行新决策（异步执行，不阻塞）
+                                            asyncio.create_task(self._execute_trades(new_decisions))
+                                        else:
+                                            self.logger.info(
+                                                f"ℹ️ [平仓后立即决策] {symbol}: 未生成新的交易计划，保持观望"
+                                            )
+                                finally:
+                                    # 恢复 last_trade_time（如果之前有值）
+                                    if saved_last_trade_time:
+                                        self.decision_engine.trade_stats['last_trade_time'] = saved_last_trade_time
+                            except Exception as e:
+                                self.logger.error(f"平仓后立即生成决策失败 {symbol}: {e}")
                 
                 # 避免频繁交易
                 await asyncio.sleep(1)
@@ -1354,13 +1418,17 @@ class TradingEngine:
                         continue
                     
                     # 从API数据构建position对象（使用真实的开仓均价）
+                    # 获取 posSide（从 API 原始数据中获取）
+                    pos_side_from_api = pos_data.get('posSide', 'net')
+                    
                     position = {
                         'symbol': symbol,
                         'size': position_size,
                         'side': 'long' if float(pos_str) > 0 else 'short',
                         'avg_price': float(pos_data.get('avgPx', '0')) if pos_data.get('avgPx') else 0,
                         'average_price': float(pos_data.get('avgPx', '0')) if pos_data.get('avgPx') else 0,
-                        'mark_price': float(pos_data.get('markPx', '0')) if pos_data.get('markPx') else 0
+                        'mark_price': float(pos_data.get('markPx', '0')) if pos_data.get('markPx') else 0,
+                        'posSide': pos_side_from_api  # 保存 posSide 字段，用于平仓时使用
                     }
                     
                     # AI分析是否应该调整仓位
@@ -1648,7 +1716,7 @@ class TradingEngine:
                     confidence=adjustment.get('confidence', 0.8),
                     reasoning=adjustment.get('reason', 'AI建议平仓'),
                     signals=[],
-                    risk_assessment={}
+                    risk_assessment={'passed': True}  # 平仓操作必须执行，跳过风险检查
                 )
             elif action == 'add':
                 # 加仓
@@ -1688,7 +1756,7 @@ class TradingEngine:
                     confidence=adjustment.get('confidence', 0.7),
                     reasoning=adjustment.get('reason', 'AI建议减仓'),
                     signals=[],
-                    risk_assessment={}
+                    risk_assessment={'passed': True}  # 减仓操作必须执行，跳过风险检查
                 )
             
             return None
@@ -1718,12 +1786,41 @@ class TradingEngine:
             
             # 兼容不同的持仓方向格式
             position_side_raw = position.get('side', 'long')
+            # 检查实际持仓的 posSide（可能是 'net', 'long', 'short'）
+            actual_pos_side = position.get('posSide', None)
+            
+            # 如果 posSide 不存在，尝试从其他字段推断
+            if actual_pos_side is None:
+                # 检查是否有其他字段可以推断
+                if 'posSide' in position:
+                    actual_pos_side = position['posSide']
+                else:
+                    # 默认使用 'net'（单向持仓模式）
+                    actual_pos_side = 'net'
+                    self.logger.warning(f"⚠️ {symbol}: 持仓数据中没有 posSide 字段，使用默认值 'net'")
+            
+            self.logger.info(
+                f"🔍 [平仓决策] {symbol}: position数据 keys={list(position.keys())}, "
+                f"side={position_side_raw}, posSide={actual_pos_side}"
+            )
+            
             if position_side_raw == 'buy':
                 position_side = 'long'
             elif position_side_raw == 'sell':
                 position_side = 'short'
             else:
                 position_side = position_side_raw
+            
+            # 如果实际持仓是 'net' 模式，平仓时也应该使用 'net'
+            # 否则使用具体的 'long' 或 'short'
+            if actual_pos_side == 'net' or actual_pos_side is None or actual_pos_side == '':
+                # 单向持仓模式，使用 'net'
+                pos_side_for_order = 'net'
+                self.logger.info(f"✅ {symbol}: 使用 'net' 模式平仓（单向持仓）")
+            else:
+                # 双向持仓模式，使用具体的方向
+                pos_side_for_order = position_side
+                self.logger.info(f"✅ {symbol}: 使用 '{pos_side_for_order}' 模式平仓（双向持仓）")
             
             if position_side == 'long':
                 decision_action = 'close_long'
@@ -1734,14 +1831,14 @@ class TradingEngine:
                 symbol=symbol,
                 action=decision_action,
                 position_size=1.0,  # 全部平仓
-                position_side=position_side,
+                position_side=pos_side_for_order,  # 使用正确的 posSide（可能是 'net'）
                 price=trigger_price,
                 stop_loss=None,
                 take_profit=None,
                 confidence=0.9,  # 止损止盈触发时，信心度很高
                 reasoning=f'{reason}触发：触发价格{trigger_price:.2f}',
                 signals=[],
-                risk_assessment={}
+                risk_assessment={'passed': True}  # 止损/止盈必须执行，跳过风险检查
             )
             
         except Exception as e:
@@ -1750,27 +1847,33 @@ class TradingEngine:
     
     def _is_closing_position(self, symbol: str, action: str) -> bool:
         """判断是否为平仓操作（支持合约交易）"""
+        # 最简单直接的判断：如果 action 是 close_long 或 close_short，就是平仓
+        if action in ['close_long', 'close_short']:
+            self.logger.debug(f"✅ [平仓判断] {symbol}: action={action} 是平仓操作")
+            return True
+        
+        # 其他情况需要检查当前持仓
         current_position = self.position_manager.get_position(symbol)
         
         if not current_position or current_position.get('size', 0) == 0:
+            self.logger.debug(f"❌ [平仓判断] {symbol}: action={action}, 无持仓，不是平仓")
             return False
         
         current_side = current_position.get('side', 'none')
         
-        # 合约交易：close_long平多，close_short平空
-        if action in ['close_long', 'close_short']:
-            return True
-        
         # 现货交易：如果当前是多仓且操作为卖出，或当前是空仓且操作为买入，则为平仓
         if (current_side == 'buy' and action == 'sell') or \
            (current_side == 'sell' and action == 'buy'):
+            self.logger.debug(f"✅ [平仓判断] {symbol}: action={action}, current_side={current_side} 是平仓操作")
             return True
         
         # 合约交易：如果当前是多仓且操作为做空，或当前是空仓且操作为做多，则为先平仓再开仓
         if (current_side == 'long' and action == 'short') or \
            (current_side == 'short' and action == 'long'):
+            self.logger.debug(f"✅ [平仓判断] {symbol}: action={action}, current_side={current_side} 是平仓操作")
             return True
         
+        self.logger.debug(f"❌ [平仓判断] {symbol}: action={action}, current_side={current_side} 不是平仓操作")
         return False
     
     async def _update_positions(self):
@@ -2394,6 +2497,9 @@ class TradingEngine:
                 f"交易收益: {trade_profit.symbol} {trade_profit.trade_id}, "
                 f"收益={trade_profit.net_profit:.2f}, 收益率={trade_profit.return_rate:.2f}%"
             )
+            
+            # 写入交易记录日志
+            self._write_trade_log(trade_info, order, trade_profit)
         
         except Exception as e:
             self.logger.error(f"计算交易收益失败: {e}")
@@ -2424,6 +2530,107 @@ class TradingEngine:
         """禁用交易"""
         self.trading_enabled = False
         self.logger.info("交易已禁用")
+    
+    def _write_trade_log_entry(self, symbol: str, decision, order, entry_price: float, entry_time: datetime):
+        """
+        记录开仓信息到交易日志
+        
+        Args:
+            symbol: 交易对
+            decision: 交易决策
+            order: 订单对象
+            entry_price: 开仓价
+            entry_time: 开仓时间
+        """
+        try:
+            # 生成日志文件名：交易对_日期_时间_开仓.log
+            timestamp = entry_time.strftime('%Y%m%d_%H%M%S')
+            log_file = self.trade_log_dir / f"{symbol}_{timestamp}_ENTRY.json"
+            
+            trade_log = {
+                'symbol': symbol,
+                'action': 'ENTRY',
+                'timestamp': entry_time.isoformat(),
+                'order_id': order.order_id,
+                'position_side': decision.position_side,
+                'entry_price': float(entry_price),
+                'quantity': float(order.filled_size),
+                'confidence': float(decision.confidence) if decision.confidence else 0.0,
+                'entry_reason': decision.reasoning or 'open',
+                'decision_action': decision.action,
+                'position_size_pct': float(decision.position_size) if decision.position_size else 0.0,
+            }
+            
+            # 如果有AI分析，也记录
+            if hasattr(decision, 'signals') and decision.signals:
+                for signal in decision.signals:
+                    if signal.get('source') == 'ai':
+                        trade_log['ai_analysis'] = signal.get('data', {})
+                        break
+            
+            # 写入JSON文件
+            with open(log_file, 'w', encoding='utf-8') as f:
+                json.dump(trade_log, f, indent=2, ensure_ascii=False)
+            
+            self.logger.info(f"📝 [交易日志] 开仓记录已保存: {log_file}")
+            
+        except Exception as e:
+            self.logger.error(f"写入开仓日志失败 {symbol}: {e}")
+    
+    def _write_trade_log(self, trade_info: Dict[str, Any], order, trade_profit):
+        """
+        记录完整交易记录到日志文件（平仓时）
+        
+        Args:
+            trade_info: 交易信息
+            order: 订单对象
+            trade_profit: 交易收益对象
+        """
+        try:
+            symbol = order.symbol
+            entry_time = trade_info.get('entry_time') if trade_info else (order.created_at or datetime.now())
+            
+            # 生成日志文件名：交易对_日期_时间_完整.log
+            timestamp = entry_time.strftime('%Y%m%d_%H%M%S')
+            log_file = self.trade_log_dir / f"{symbol}_{timestamp}_COMPLETE.json"
+            
+            exit_time = trade_info.get('exit_time') if trade_info else (order.executed_at or datetime.now())
+            holding_duration = (exit_time - entry_time).total_seconds() / 60 if entry_time else 0  # 分钟
+            
+            trade_log = {
+                'symbol': symbol,
+                'action': 'COMPLETE',
+                'trade_id': order.order_id,
+                'entry_time': entry_time.isoformat() if isinstance(entry_time, datetime) else str(entry_time),
+                'exit_time': exit_time.isoformat() if isinstance(exit_time, datetime) else str(exit_time),
+                'holding_duration_minutes': round(holding_duration, 2),
+                'position_side': trade_info.get('position_side', 'long') if trade_info else 'long',
+                'entry_price': float(trade_info.get('entry_price', 0)) if trade_info else 0.0,
+                'exit_price': float(trade_info.get('exit_price', 0)) if trade_info else float(order.average_price or order.filled_price or 0),
+                'quantity': float(trade_info.get('position_size', 0)) if trade_info else float(order.filled_size or 0),
+                'gross_profit': float(trade_profit.gross_profit) if trade_profit else 0.0,
+                'net_profit': float(trade_profit.net_profit) if trade_profit else 0.0,
+                'return_rate_pct': float(trade_profit.return_rate) if trade_profit else 0.0,
+                'fees': float(trade_profit.fees) if trade_profit else 0.0,
+                'entry_reason': trade_info.get('entry_reason', 'open') if trade_info else 'open',
+                'exit_reason': trade_info.get('exit_reason', 'close') if trade_info else 'close',
+            }
+            
+            # 如果有AI分析，也记录
+            if trade_info and trade_info.get('ai_analysis'):
+                trade_log['ai_analysis'] = trade_info.get('ai_analysis')
+            
+            # 写入JSON文件
+            with open(log_file, 'w', encoding='utf-8') as f:
+                json.dump(trade_log, f, indent=2, ensure_ascii=False)
+            
+            self.logger.info(
+                f"📝 [交易日志] 完整交易记录已保存: {log_file} | "
+                f"盈亏={trade_log['net_profit']:.2f} USDT ({trade_log['return_rate_pct']:.2f}%)"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"写入交易日志失败 {order.symbol if order else 'unknown'}: {e}")
 
 
 if __name__ == "__main__":
