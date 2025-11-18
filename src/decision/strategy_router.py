@@ -73,7 +73,13 @@ class StrategyRouter:
         scene_templates = self.templates.get('scenes', {}) if isinstance(self.templates, dict) else {}
         if symbol and symbol in symbol_templates:
             return symbol_templates[symbol].get(scene_type, symbol_templates[symbol].get('default', self._default_templates()[scene_type]))
-        return scene_templates.get(scene_type) or self.templates.get(scene_type) or self._default_templates().get(scene_type, self._default_templates()['neutral'])
+        default_templates = self._default_templates()
+        return (
+            scene_templates.get(scene_type)
+            or self.templates.get(scene_type)
+            or default_templates.get(scene_type)
+            or default_templates.get('neutral')
+        )
 
     def _default_templates(self) -> Dict[str, Dict[str, Any]]:
         return self.config_mgr.get_config('trading', 'strategy_templates_defaults', {
