@@ -174,6 +174,7 @@ class ExecutionEngine:
         Returns:
             执行的订单对象
         """
+        order: Optional[Order] = None
         try:
             start_time = time.time()
             self.logger.info(f"开始执行决策: {decision.symbol} {decision.action} {decision.position_size:.2%}")
