@@ -195,6 +195,16 @@ strategy_templates:
         circuit_breaker:
           enabled: true
           cooldown_seconds: 900
+        hedge:
+          enabled: true
+          mode: "reverse"
+          size_ratio: 1.0
+          order_type: "market"
+          take_profit_pct: 0.008
+          stop_loss_pct: 0.015
+          min_position_pct: 0.08
+          bypass_risk: true
+          reason: "事件触发对冲，锁定收益"
       trend_reversal:
         name: "trend_reversal"
         bias: "short"

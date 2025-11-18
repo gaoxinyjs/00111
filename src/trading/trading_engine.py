@@ -1051,6 +1051,14 @@ class TradingEngine:
                     symbol, symbol_market_data, current_position
                 )
                 if decision:
+                    breaker_meta = getattr(decision, '_circuit_breaker', None)
+                    if breaker_meta:
+                        reason = breaker_meta.get('reason') or f"{symbol} 策略触发熔断"
+                        cooldown = breaker_meta.get('cooldown') or self.event_circuit_default_cooldown
+                        self.logger.warning(
+                            f"⚠️ [事件熔断触发] {symbol}: {reason}，暂停新单 {cooldown}s"
+                        )
+                        self._activate_event_circuit(reason, cooldown)
                     decisions.append(decision)
             
             except CircuitBreakerTriggered as cb:
@@ -1078,16 +1086,16 @@ class TradingEngine:
         for decision in decisions:
             try:
                 symbol = decision.symbol
+                is_hedge_order = getattr(decision, '_is_hedge_order', False)
+                skip_risk_check = getattr(decision, '_skip_risk_check', False)
                 
                 # 检查是否为DeepSeek决策（必须严格执行）
-                # 优先检查decision对象上的标记
                 is_deepseek_decision = getattr(decision, '_is_deepseek_decision', False)
                 
                 # 如果没有标记，检查signals中的direction字段
                 if not is_deepseek_decision and decision.signals:
                     for signal_data in decision.signals:
                         if signal_data.get('source') == 'ai':
-                            # 检查是否有direction字段
                             analysis = signal_data.get('data', {}).get('analysis', {})
                             if not analysis:
                                 analysis = signal_data.get('data', {})
@@ -1096,7 +1104,9 @@ class TradingEngine:
                                 is_deepseek_decision = True
                                 break
                 
-                if self._is_event_circuit_active() and decision.action in ['long', 'short', 'buy', 'sell']:
+                if (self._is_event_circuit_active()
+                        and decision.action in ['long', 'short', 'buy', 'sell']
+                        and not is_hedge_order):
                     self._log_event_circuit_block(symbol)
                     continue
 
@@ -1108,32 +1118,29 @@ class TradingEngine:
                     )
                 else:
                     # 非DeepSeek决策，进行常规检查
-                    # 检查是否应该执行
                     if not self.decision_engine.should_execute_decision(decision):
                         self.logger.info(f"{symbol}: 决策不满足执行条件，跳过")
                         continue
                     
-                    # 检查信心度
                     if decision.confidence < self.min_confidence:
                         self.logger.info(
                             f"{symbol}: 信心度{decision.confidence:.2f}低于阈值{self.min_confidence}，跳过执行"
                         )
                         continue
                     
-                    # 检查仓位大小
                     if decision.position_size < self.min_position_size:
                         self.logger.info(
                             f"{symbol}: 仓位大小{decision.position_size:.2%}低于阈值{self.min_position_size:.2%}，跳过执行"
                         )
                         continue
                     
-                    # 风险检查
-                    position_size = decision.position_size
-                    market_data = {'price': decision.price or 0, 'volatility': 0.25}
-                    
-                    if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data):
-                        self.logger.warning(f"{symbol}: 风险检查未通过，拒绝交易")
-                        continue
+                    if not skip_risk_check:
+                        position_size = decision.position_size
+                        market_data = {'price': decision.price or 0, 'volatility': 0.25}
+                        
+                        if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data):
+                            self.logger.warning(f"{symbol}: 风险检查未通过，拒绝交易")
+                            continue
                 
                 # 记录准备执行的决策
                 action_desc = {
@@ -1337,7 +1344,9 @@ class TradingEngine:
                                 'order': order,
                                 'position_side': decision.position_side
                             })
-                            await self._calculate_profit(order, trade_info)
+                        await self._calculate_profit(order, trade_info)
+                
+                await self._execute_chained_decisions(decision, symbol_market_data)
                 
                 # 避免频繁交易
                 await asyncio.sleep(1)
@@ -1345,6 +1354,28 @@ class TradingEngine:
             except Exception as e:
                 self.logger.error(f"执行交易失败 {decision.symbol}: {e}")
     
+    async def _execute_chained_decisions(self, parent_decision, market_data: Dict[str, Any]):
+        chained = getattr(parent_decision, '_chained_decisions', None)
+        if not chained:
+            return
+        for idx, extra_decision in enumerate(chained, 1):
+            symbol = getattr(extra_decision, 'symbol', 'UNKNOWN')
+            try:
+                is_hedge_order = getattr(extra_decision, '_is_hedge_order', False)
+                if (self._is_event_circuit_active()
+                        and extra_decision.action in ['long', 'short', 'buy', 'sell']
+                        and not is_hedge_order):
+                    self._log_event_circuit_block(symbol)
+                    continue
+                self.logger.info(
+                    f"🛡️ [附加决策执行] {symbol}: {extra_decision.action} | "
+                    f"仓位={extra_decision.position_size:.2%} | 序号#{idx}"
+                )
+                await self.execution_engine.execute_decision(extra_decision)
+                await self._execute_chained_decisions(extra_decision, market_data)
+            except Exception as err:
+                self.logger.error(f"执行附加决策失败 {symbol}: {err}")
+
     def _clone_decision(self, decision, entry_meta: Dict[str, Any]):
         from ..decision.decision_engine import TradingDecision
         price = entry_meta.get('price') or decision.price
