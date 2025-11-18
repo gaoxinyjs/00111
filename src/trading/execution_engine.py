@@ -6,7 +6,6 @@
 """
 
 import time
-import math
 from typing import Dict, Optional, Any, List
 from datetime import datetime
 from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
@@ -119,6 +118,29 @@ class ExecutionEngine:
         if take is not None and take <= 0:
             take = self._align_price_to_tick(entry_price - tick, tick, 'down')
         return stop, take
+
+    @staticmethod
+    def _align_size_to_lot(size: float, lot_size: float, min_size: float) -> tuple[float, bool]:
+        """对齐下单数量到交易所要求的最小变动单位"""
+        if size <= 0:
+            return 0.0, False
+        size_dec = Decimal(str(size))
+        min_size_dec = Decimal(str(min_size)) if min_size and min_size > 0 else Decimal('0')
+        if not lot_size or lot_size <= 0:
+            aligned = max(size_dec, min_size_dec)
+            aligned_float = float(aligned)
+            return aligned_float, abs(aligned_float - size) > 1e-9
+        lot_dec = Decimal(str(lot_size))
+        lots = (size_dec / lot_dec).to_integral_value(rounding=ROUND_FLOOR)
+        if lots <= 0:
+            lots = Decimal(1)
+        aligned = lots * lot_dec
+        if aligned < min_size_dec:
+            lots = (min_size_dec / lot_dec).to_integral_value(rounding=ROUND_CEILING)
+            aligned = lots * lot_dec
+        aligned_float = float(aligned)
+        adjusted = abs(aligned_float - size) > 1e-9
+        return aligned_float, adjusted
 
     @staticmethod
     def _extract_okx_items(response: Any) -> List[Dict[str, Any]]:
@@ -412,12 +434,15 @@ class ExecutionEngine:
                     self.logger.warning(f"最终下单数量无效，停止执行: size={size}")
                     return None
             # 调整数量至交易所允许的精度
-            if lot_size > 0:
-                lots = max(1, math.floor(size / lot_size))
-                size = lots * lot_size
-            if size < min_size:
-                size = math.ceil(min_size / lot_size) * lot_size if lot_size > 0 else min_size
-            size = float(size)
+            aligned_size, adjusted = self._align_size_to_lot(size, lot_size, min_size)
+            if aligned_size <= 0:
+                self.logger.warning(f"{symbol}: 数量对齐后无效，停止执行 | 原始={size:.6f}, lotSz={lot_size}, minSz={min_size}")
+                return None
+            if adjusted:
+                self.logger.debug(
+                    f"[数量对齐] {symbol}: 原始={size:.6f}, 调整后={aligned_size:.6f}, lotSz={lot_size}, minSz={min_size}"
+                )
+            size = aligned_size
             position_value = size * entry_price_for_sl * ct_val
             self.logger.info(
                 f"[执行决策] {symbol}: {action_desc}({position_side}) | 仓位比例={decision.position_size:.2%} | "
