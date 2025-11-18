@@ -457,55 +457,14 @@ class ExecutionEngine:
             
             # 5. 监控订单执行
             if order.status == OrderStatus.SUBMITTED:
-                # 等待订单成交
                 order = self._wait_for_execution(order, timeout=30)
             
-            # 6. 计算滑点并设置成交后的止盈止损
+            # 6. 计算滑点（止盈止损已经在开仓时通过attachAlgoOrds设置，无需重复设置）
             if order.status == OrderStatus.FILLED:
                 reference_price = decision.price if decision.price else entry_price_for_sl
                 slippage = self._calculate_slippage(order, reference_price)
                 self.execution_stats['total_slippage'] += slippage
                 filled_price = order.average_price or order.filled_price or reference_price
-                if not is_closing and order.stop_loss_price and order.take_profit_price and filled_price:
-                    stop_distance = abs(order.stop_loss_price - entry_price_for_sl)
-                    take_distance = abs(order.take_profit_price - entry_price_for_sl)
-                    if decision.action in ['long', 'buy']:
-                        actual_stop_loss = filled_price - stop_distance
-                        actual_take_profit = filled_price + take_distance
-                    else:
-                        actual_stop_loss = filled_price + stop_distance
-                        actual_take_profit = filled_price - take_distance
-                    actual_stop_loss, actual_take_profit = self._adjust_sl_tp_prices(
-                        side=side,
-                        entry_price=filled_price,
-                        stop_loss=actual_stop_loss,
-                        take_profit=actual_take_profit,
-                        tick_size=tick_size,
-                    )
-                    order.stop_loss_price = actual_stop_loss
-                    order.take_profit_price = actual_take_profit
-                    try:
-                        position_side_for_sl = 'long' if decision.action in ['long', 'buy'] else 'short'
-                        sl_tp_success = await self._set_stop_loss_take_profit(
-                            symbol=symbol,
-                            side=side,
-                            position_side=position_side_for_sl,
-                            stop_loss_price=actual_stop_loss,
-                            take_profit_price=actual_take_profit,
-                            main_order=order,
-                        )
-                        if sl_tp_success:
-                            self.logger.info(
-                                f"✅ {symbol}: 成交后设置止盈止损成功 | 止损={actual_stop_loss:.5f}, 止盈={actual_take_profit:.5f}"
-                            )
-                        else:
-                            self.logger.warning(
-                                f"⚠️ {symbol}: 成交后止盈止损未全部设置成功，止损={actual_stop_loss:.5f}, 止盈={actual_take_profit:.5f}"
-                            )
-                    except Exception as e:
-                        self.logger.error(f"设置成交后止盈止损失败 {symbol}: {e}")
-                elif not is_closing:
-                    self.logger.warning(f"⚠️ {symbol}: 订单已成交，但止盈止损数据缺失，未能自动设置")
             
             # 7. 更新统计
             execution_time = time.time() - start_time
