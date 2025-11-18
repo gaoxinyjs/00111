@@ -8,6 +8,7 @@
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from dataclasses import dataclass
+from pathlib import Path
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
 from ..analysis.signal_generator import SignalGenerator, Signal
@@ -73,6 +74,9 @@ class DecisionEngine:
             for pair in trading_pairs_cfg
             if pair.get('symbol')
         }
+        project_root = Path(__file__).parent.parent.parent
+        self._trading_config_path = project_root / "config" / "trading_config.yaml"
+        self._trading_config_mtime = self._get_trading_config_mtime()
         self.default_fallback_multipliers = {
             'ai_hold': 0.6,
             'ai_no_direction': 0.5,
@@ -96,6 +100,27 @@ class DecisionEngine:
             'daily_profit': 0.0,  # 当日累计盈亏（比例）
             'last_reset_date': datetime.now().date(),  # 上次重置日期
         }
+    
+    def _get_trading_config_mtime(self) -> Optional[float]:
+        try:
+            return self._trading_config_path.stat().st_mtime
+        except OSError:
+            return None
+
+    def _refresh_trading_config_if_needed(self):
+        current_mtime = self._get_trading_config_mtime()
+        if current_mtime and (
+            self._trading_config_mtime is None or current_mtime > self._trading_config_mtime
+        ):
+            self.logger.info("检测到trading_config.yaml发生变更，重新加载交易配置")
+            self.config_mgr.reload_config('trading')
+            trading_pairs_cfg = self.config_mgr.get_config('trading', 'trading_pairs') or []
+            self.pair_config_map = {
+                pair.get('symbol'): pair
+                for pair in trading_pairs_cfg
+                if pair.get('symbol')
+            }
+            self._trading_config_mtime = current_mtime
     
     def _get_leverage(self, symbol: str) -> int:
         """
@@ -209,6 +234,7 @@ class DecisionEngine:
             交易决策
         """
         try:
+            self._refresh_trading_config_if_needed()
             self.logger.info(f"开始生成交易决策: {symbol}")
             
             # 0. 检查交易频率限制（针对15分钟K线优化：每15分钟必须生成一次决策）
@@ -287,6 +313,20 @@ class DecisionEngine:
                     min_confidence_cfg = max(float(min_confidence_cfg), float(self.dynamic_confidence_threshold))
                 except (TypeError, ValueError):
                     min_confidence_cfg = self.dynamic_confidence_threshold
+
+            # DeepSeek信心度降级阈值：优先使用交易对专属配置，其次使用auto_trading.ai_confidence_threshold
+            ai_conf_threshold_cfg = pair_cfg.get('ai_confidence_threshold')
+            if ai_conf_threshold_cfg is None:
+                ai_conf_threshold_cfg = auto_trading_cfg.get('ai_confidence_threshold', 0.5)
+            try:
+                ai_conf_threshold = float(ai_conf_threshold_cfg)
+            except (TypeError, ValueError):
+                ai_conf_threshold = 0.5
+            if self.dynamic_confidence_threshold is not None:
+                try:
+                    ai_conf_threshold = max(ai_conf_threshold, float(self.dynamic_confidence_threshold))
+                except (TypeError, ValueError):
+                    pass
             
             # 查找DeepSeek信号
             for signal in signals:
@@ -353,9 +393,9 @@ class DecisionEngine:
                 fallback_to_internal = True
                 fallback_reason = fallback_reason or "ai_no_direction"
             
-            if deepseek_confidence_value < 0.65:
+            if deepseek_confidence_value < ai_conf_threshold:
                 self.logger.info(
-                    f"{symbol}: DeepSeek信心度{deepseek_confidence_value:.2f}低于阈值0.65，将尝试降级处理"
+                    f"{symbol}: DeepSeek信心度{deepseek_confidence_value:.2f}低于阈值{ai_conf_threshold:.2f}，将尝试降级处理"
                 )
                 if current_position and current_position.get('size', 0) > 0:
                     self.logger.info(f"{symbol}: DeepSeek信心度过低，准备平仓当前持仓")

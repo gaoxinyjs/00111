@@ -55,6 +55,7 @@ contract_trading:
 auto_trading:
   enabled: true  # 启用自动交易（根据决策自动买入卖出）
   min_confidence: 0.5  # 提高最低信心度阈值，过滤低质量信号
+  ai_confidence_threshold: 0.5  # DeepSeek信号最低信心度阈值，低于该值降级到多因子策略
   min_position_size: 0.005  # 最小仓位（0.5%），进一步降低以抓住更多小机会
   entry_signal_threshold: 0.35  # 多因子综合评分阈值，低于该值不入场
   # 狼式交易策略：快速出击，快速撤退

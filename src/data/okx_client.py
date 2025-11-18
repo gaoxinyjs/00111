@@ -641,9 +641,11 @@ class OKXClient:
         获取强平订单（已成交）
         """
         endpoint = "/api/v5/public/liquidation-orders"
+        underlying = self._extract_underlying(symbol)
         params = {
             'instType': self._infer_inst_type(symbol),
             'instId': symbol,
+            'uly': underlying,
             'state': 'filled',
             'limit': limit
         }
@@ -672,7 +674,7 @@ class OKXClient:
         """
         获取主动买卖量（Taker Volume）
         """
-        endpoint = "/api/v5/public/taker-volume"
+        endpoint = "/api/v5/market/taker-volume"
         underlying = self._extract_underlying(symbol)
         params = {
             'instType': self._infer_inst_type(symbol),
@@ -685,7 +687,7 @@ class OKXClient:
         """
         获取多空账户占比（Top Trader Sentiment）
         """
-        endpoint = "/api/v5/public/account-ratio"
+        endpoint = "/api/v5/market/account-ratio"
         underlying = self._extract_underlying(symbol)
         params = {
             'instType': self._infer_inst_type(symbol),

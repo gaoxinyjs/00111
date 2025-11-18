@@ -16,6 +16,7 @@ from ..analysis.signal_generator import SignalGenerator
 from ..analysis.signal_filter import SignalFilter
 from ..decision.decision_engine import DecisionEngine
 from ..trading.execution_engine import ExecutionEngine
+from ..trading.order_manager import OrderStatus
 from ..risk.risk_manager import RiskManager
 from ..risk.position_controller import PositionController
 from ..trading.position_manager import PositionManager
@@ -1028,14 +1029,18 @@ class TradingEngine:
                 symbol = decision.symbol
                 
                 # 检查是否为DeepSeek决策（必须严格执行）
+                fallback_info = getattr(decision, '_fallback', {}) or {}
                 # 优先检查decision对象上的标记
                 is_deepseek_decision = getattr(decision, '_is_deepseek_decision', False)
                 
-                # 如果没有标记，检查signals中的direction字段
-                if not is_deepseek_decision and decision.signals:
+                # 如果没有标记，且未处于降级模式，再检查signals中的direction字段
+                if (
+                    not is_deepseek_decision
+                    and not fallback_info.get('used')
+                    and decision.signals
+                ):
                     for signal_data in decision.signals:
                         if signal_data.get('source') == 'ai':
-                            # 检查是否有direction字段
                             analysis = signal_data.get('data', {}).get('analysis', {})
                             if not analysis:
                                 analysis = signal_data.get('data', {})
@@ -1180,14 +1185,27 @@ class TradingEngine:
                 order = await self.execution_engine.execute_decision(decision)
                 
                 if order:
-                    self.logger.info(f"{symbol}: 交易执行成功，订单ID: {order.order_id}")
+                    status_value = order.status.value if order.status else 'unknown'
+                    if order.status == OrderStatus.FILLED:
+                        self.logger.info(f"{symbol}: 交易执行成功，订单ID: {order.order_id}")
+                    elif order.status in (OrderStatus.SUBMITTED, OrderStatus.PARTIAL_FILLED):
+                        self.logger.info(
+                            f"{symbol}: 订单已提交，状态={status_value}，订单ID: {order.order_id}"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"{symbol}: 订单未完成，状态={status_value}，订单ID: {order.order_id}"
+                        )
                     
                     # 如果是限价单且未成交，记录为待成交委托
-                    if order.order_type == 'limit' and order.status.value in ['submitted', 'partial_filled']:
+                    if (
+                        order.order_type == 'limit'
+                        and order.status in (OrderStatus.SUBMITTED, OrderStatus.PARTIAL_FILLED)
+                    ):
                         self.pending_orders[symbol] = {
                             'order': order,
                             'decision': decision,
-                            'create_time': datetime.now()  # 记录挂单时间
+                            'create_time': datetime.now()
                         }
                         self.logger.info(
                             f"📝 {symbol}: 记录待成交委托订单 | "
@@ -1199,8 +1217,7 @@ class TradingEngine:
                         )
                     
                     # 更新持仓
-                    if order.status.value == 'filled':
-                        # 订单已成交，清除待成交记录
+                    if order.status == OrderStatus.FILLED:
                         if symbol in self.pending_orders:
                             del self.pending_orders[symbol]
                             self.logger.debug(f"✅ {symbol}: 订单已成交，清除待成交记录")
@@ -1210,15 +1227,13 @@ class TradingEngine:
                         fill_price = order.average_price or order.filled_price or decision.price or symbol_market_data.get('price', 0)
                         fill_time = order.executed_at or datetime.now()
                         
-                        # 更新决策引擎的交易时间（用于15分钟间隔检查）
                         self.decision_engine.trade_stats['last_trade_time'] = datetime.now()
                         self.logger.debug(
                             f"⏰ [更新交易时间] {symbol}: "
-                            f"上次交易时间={datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, "
+                            f"上次交易时间={datetime.now().strftime('%Y-%m-%d %H:%M:%S')}，"
                             f"下次可在15分钟后生成新决策"
                         )
                         
-                        # 记录开仓时间（如果是开仓订单）
                         if not self._is_closing_position(symbol, decision.action):
                             self.position_entry_times[symbol] = {
                                 'entry_time': fill_time,
@@ -1226,7 +1241,6 @@ class TradingEngine:
                                 'size': order.filled_size,
                                 'order_id': order.order_id
                             }
-                            # 记录用于后续结果写入的关键信息
                             record_id = getattr(decision, '_record_id', None)
                             if record_id:
                                 self.active_trade_records[symbol] = {
@@ -1244,7 +1258,6 @@ class TradingEngine:
                                 f"将在15分钟后检查是否强制平仓"
                             )
                         else:
-                            # 这是平仓订单，清除开仓时间记录
                             if symbol in self.position_entry_times:
                                 entry_time = self.position_entry_times[symbol].get('entry_time')
                                 hold_duration = (fill_time - entry_time).total_seconds() / 60 if entry_time else 0
@@ -1253,7 +1266,6 @@ class TradingEngine:
                                     f"✅ [平仓清除时间记录] {symbol}: 持仓时长={hold_duration:.2f}分钟"
                                 )
                         
-                        # 计算收益（如果是平仓）
                         if self._is_closing_position(symbol, decision.action):
                             trade_info = self.active_trade_records.pop(symbol, None) or {}
                             trade_info.update({
@@ -1264,6 +1276,9 @@ class TradingEngine:
                                 'position_side': decision.position_side
                             })
                             await self._calculate_profit(order, trade_info)
+                
+                else:
+                    self.logger.error(f"{symbol}: 执行引擎未返回订单，可能执行失败")
                 
                 # 避免频繁交易
                 await asyncio.sleep(1)

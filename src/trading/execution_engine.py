@@ -6,7 +6,6 @@
 """
 
 import time
-import math
 from typing import Dict, Optional, Any, List
 from datetime import datetime
 from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
@@ -119,6 +118,51 @@ class ExecutionEngine:
         if take is not None and take <= 0:
             take = self._align_price_to_tick(entry_price - tick, tick, 'down')
         return stop, take
+
+    @staticmethod
+    def _align_size_to_lot(size: float, lot_size: float, min_size: float) -> tuple[float, bool]:
+        """对齐下单数量到交易所要求的最小变动单位"""
+        if size <= 0:
+            return 0.0, False
+        size_dec = Decimal(str(size))
+        min_size_dec = Decimal(str(min_size)) if min_size and min_size > 0 else Decimal('0')
+        if not lot_size or lot_size <= 0:
+            aligned = max(size_dec, min_size_dec)
+            aligned_float = float(aligned)
+            return aligned_float, abs(aligned_float - size) > 1e-9
+        lot_dec = Decimal(str(lot_size))
+        lots = (size_dec / lot_dec).to_integral_value(rounding=ROUND_FLOOR)
+        if lots <= 0:
+            lots = Decimal(1)
+        aligned = lots * lot_dec
+        if aligned < min_size_dec:
+            lots = (min_size_dec / lot_dec).to_integral_value(rounding=ROUND_CEILING)
+            aligned = lots * lot_dec
+        aligned_float = float(aligned)
+        adjusted = abs(aligned_float - size) > 1e-9
+        return aligned_float, adjusted
+
+    @staticmethod
+    def _extract_okx_items(response: Any) -> List[Dict[str, Any]]:
+        if isinstance(response, list):
+            return [item for item in response if isinstance(item, dict)]
+        if isinstance(response, dict):
+            data_field = response.get('data')
+            if isinstance(data_field, list):
+                return [item for item in data_field if isinstance(item, dict)]
+            return [response]
+        return []
+
+    @classmethod
+    def _okx_response_success(cls, response: Any) -> bool:
+        items = cls._extract_okx_items(response)
+        if not items:
+            return False
+        for item in items:
+            s_code = str(item.get('sCode', '0')).strip()
+            if s_code and s_code not in ('0', '00000'):
+                return False
+        return True
     
     async def execute_decision(self, decision: TradingDecision) -> Optional[Order]:
         """
@@ -130,6 +174,7 @@ class ExecutionEngine:
         Returns:
             执行的订单对象
         """
+        order: Optional[Order] = None
         try:
             start_time = time.time()
             self.logger.info(f"开始执行决策: {decision.symbol} {decision.action} {decision.position_size:.2%}")
@@ -390,12 +435,15 @@ class ExecutionEngine:
                     self.logger.warning(f"最终下单数量无效，停止执行: size={size}")
                     return None
             # 调整数量至交易所允许的精度
-            if lot_size > 0:
-                lots = max(1, math.floor(size / lot_size))
-                size = lots * lot_size
-            if size < min_size:
-                size = math.ceil(min_size / lot_size) * lot_size if lot_size > 0 else min_size
-            size = float(size)
+            aligned_size, adjusted = self._align_size_to_lot(size, lot_size, min_size)
+            if aligned_size <= 0:
+                self.logger.warning(f"{symbol}: 数量对齐后无效，停止执行 | 原始={size:.6f}, lotSz={lot_size}, minSz={min_size}")
+                return None
+            if adjusted:
+                self.logger.debug(
+                    f"[数量对齐] {symbol}: 原始={size:.6f}, 调整后={aligned_size:.6f}, lotSz={lot_size}, minSz={min_size}"
+                )
+            size = aligned_size
             position_value = size * entry_price_for_sl * ct_val
             self.logger.info(
                 f"[执行决策] {symbol}: {action_desc}({position_side}) | 仓位比例={decision.position_size:.2%} | "
@@ -435,50 +483,14 @@ class ExecutionEngine:
             
             # 5. 监控订单执行
             if order.status == OrderStatus.SUBMITTED:
-                # 等待订单成交
                 order = self._wait_for_execution(order, timeout=30)
             
-            # 6. 计算滑点并设置成交后的止盈止损
+            # 6. 计算滑点（止盈止损已经在开仓时通过attachAlgoOrds设置，无需重复设置）
             if order.status == OrderStatus.FILLED:
                 reference_price = decision.price if decision.price else entry_price_for_sl
                 slippage = self._calculate_slippage(order, reference_price)
                 self.execution_stats['total_slippage'] += slippage
                 filled_price = order.average_price or order.filled_price or reference_price
-                if not is_closing and order.stop_loss_price and order.take_profit_price and filled_price:
-                    stop_distance = abs(order.stop_loss_price - entry_price_for_sl)
-                    take_distance = abs(order.take_profit_price - entry_price_for_sl)
-                    if decision.action in ['long', 'buy']:
-                        actual_stop_loss = filled_price - stop_distance
-                        actual_take_profit = filled_price + take_distance
-                    else:
-                        actual_stop_loss = filled_price + stop_distance
-                        actual_take_profit = filled_price - take_distance
-                    actual_stop_loss, actual_take_profit = self._adjust_sl_tp_prices(
-                        side=side,
-                        entry_price=filled_price,
-                        stop_loss=actual_stop_loss,
-                        take_profit=actual_take_profit,
-                        tick_size=tick_size,
-                    )
-                    order.stop_loss_price = actual_stop_loss
-                    order.take_profit_price = actual_take_profit
-                    try:
-                        position_side_for_sl = 'long' if decision.action in ['long', 'buy'] else 'short'
-                        await self._set_stop_loss_take_profit(
-                            symbol=symbol,
-                            side=side,
-                            position_side=position_side_for_sl,
-                            stop_loss_price=actual_stop_loss,
-                            take_profit_price=actual_take_profit,
-                            main_order=order,
-                        )
-                        self.logger.info(
-                            f"✅ {symbol}: 成交后设置止盈止损成功 | 止损={actual_stop_loss:.5f}, 止盈={actual_take_profit:.5f}"
-                        )
-                    except Exception as e:
-                        self.logger.error(f"设置成交后止盈止损失败 {symbol}: {e}")
-                elif not is_closing:
-                    self.logger.warning(f"⚠️ {symbol}: 订单已成交，但止盈止损数据缺失，未能自动设置")
             
             # 7. 更新统计
             execution_time = time.time() - start_time
@@ -902,7 +914,7 @@ class ExecutionEngine:
             
             if order_size <= 0:
                 self.logger.warning(f"无法设置止盈止损：订单数量={order_size}")
-                return
+                return False
             
             # 如果当前价格为0，尝试从市场数据获取
             if current_price <= 0:
@@ -920,8 +932,9 @@ class ExecutionEngine:
             
             if current_price <= 0:
                 self.logger.warning(f"无法设置止盈止损：无法获取当前价格")
-                return
+                return False
             
+            overall_success = False
             # 设置止损订单（条件单）
             try:
                 # 格式化数量字符串
@@ -934,6 +947,8 @@ class ExecutionEngine:
                 if position_side == 'long' or side == 'buy':
                     # 做多：止损是卖出，止盈是卖出
                     # 止损：当价格 <= 止损价格时，卖出（市价）
+                    stop_loss_success = False
+                    take_profit_success = False
                     if stop_loss_price < current_price:
                         try:
                             stop_loss_result = okx_client.place_stop_loss_order(
@@ -945,12 +960,14 @@ class ExecutionEngine:
                                 pos_side='long' if position_side == 'long' else None
                             )
                             
-                            if stop_loss_result and stop_loss_result.get('code') == '0':
+                            stop_loss_success = self._okx_response_success(stop_loss_result)
+                            if stop_loss_success:
                                 self.logger.info(
                                     f"✅ [止损订单设置成功] {symbol}: 做多 | "
                                     f"止损价={stop_loss_price:.5f} (低于开仓价{current_price:.5f}) | "
                                     f"数量={order_size:.4f}"
                                 )
+                                overall_success = True
                             else:
                                 self.logger.warning(
                                     f"❌ [止损订单设置失败] {symbol}: {stop_loss_result}"
@@ -970,12 +987,14 @@ class ExecutionEngine:
                                 pos_side='long' if position_side == 'long' else None
                             )
                             
-                            if take_profit_result and take_profit_result.get('code') == '0':
+                            take_profit_success = self._okx_response_success(take_profit_result)
+                            if take_profit_success:
                                 self.logger.info(
                                     f"✅ [止盈订单设置成功] {symbol}: 做多 | "
                                     f"止盈价={take_profit_price:.5f} (高于开仓价{current_price:.5f}) | "
                                     f"数量={order_size:.4f}"
                                 )
+                                overall_success = True
                             else:
                                 self.logger.warning(
                                     f"❌ [止盈订单设置失败] {symbol}: {take_profit_result}"
@@ -986,6 +1005,8 @@ class ExecutionEngine:
                 else:  # short or sell
                     # 做空：止损是买入，止盈是买入
                     # 止损：当价格 >= 止损价格时，买入（市价）
+                    stop_loss_success = False
+                    take_profit_success = False
                     if stop_loss_price > current_price:
                         try:
                             stop_loss_result = okx_client.place_stop_loss_order(
@@ -997,12 +1018,14 @@ class ExecutionEngine:
                                 pos_side='short' if position_side == 'short' else None
                             )
                             
-                            if stop_loss_result and stop_loss_result.get('code') == '0':
+                            stop_loss_success = self._okx_response_success(stop_loss_result)
+                            if stop_loss_success:
                                 self.logger.info(
                                     f"✅ [止损订单设置成功] {symbol}: 做空 | "
                                     f"止损价={stop_loss_price:.5f} (高于开仓价{current_price:.5f}) | "
                                     f"数量={order_size:.4f}"
                                 )
+                                overall_success = True
                             else:
                                 self.logger.warning(
                                     f"❌ [止损订单设置失败] {symbol}: {stop_loss_result}"
@@ -1022,12 +1045,14 @@ class ExecutionEngine:
                                 pos_side='short' if position_side == 'short' else None
                             )
                             
-                            if take_profit_result and take_profit_result.get('code') == '0':
+                            take_profit_success = self._okx_response_success(take_profit_result)
+                            if take_profit_success:
                                 self.logger.info(
                                     f"✅ [止盈订单设置成功] {symbol}: 做空 | "
                                     f"止盈价={take_profit_price:.5f} (低于开仓价{current_price:.5f}) | "
                                     f"数量={order_size:.4f}"
                                 )
+                                overall_success = True
                             else:
                                 self.logger.warning(
                                     f"❌ [止盈订单设置失败] {symbol}: {take_profit_result}"
@@ -1040,6 +1065,9 @@ class ExecutionEngine:
                 
         except Exception as e:
             self.logger.error(f"设置止盈止损失败 {symbol}: {e}")
+            return False
+        
+        return overall_success
     
     async def _update_stop_loss_take_profit(self, symbol: str, order: Order,
                                              stop_loss_price: float, take_profit_price: float,
