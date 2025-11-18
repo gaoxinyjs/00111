@@ -14,6 +14,9 @@ from ..analysis.signal_generator import SignalGenerator, Signal
 from ..decision.position_calculator import PositionCalculator
 from ..decision.risk_evaluator import RiskEvaluator
 from ..decision.entry_timing_evaluator import EntryTimingEvaluator
+from ..decision.scene_detector import SceneDetector
+from ..decision.strategy_router import StrategyRouter
+from ..decision.strategy_executor import StrategyExecutor
 from ..core.exception import StrategyException
 from datetime import timedelta
 
@@ -83,6 +86,11 @@ class DecisionEngine:
         self.risk_evaluator = RiskEvaluator()
         self.entry_timing_evaluator = EntryTimingEvaluator()
         self.dynamic_confidence_threshold: Optional[float] = None
+        self.scene_detector = SceneDetector()
+        self.strategy_router = StrategyRouter()
+        self.strategy_executor = StrategyExecutor()
+        trading_opt_cfg = self.config_mgr.get_config('trading', 'trading_optimization', {}) or {}
+        self.allow_immediate_reentry = trading_opt_cfg.get('allow_immediate_reentry', False)
         
         # 决策历史
         self.decision_history: List[TradingDecision] = []
@@ -211,33 +219,46 @@ class DecisionEngine:
         try:
             self.logger.info(f"开始生成交易决策: {symbol}")
             
-            # 0. 检查交易频率限制（针对15分钟K线优化：每15分钟必须生成一次决策）
-            # 从配置读取交易间隔（如果配置中有的话）
-            trading_config = self.config_mgr.get_config('trading', 'trading_optimization', {})
-            min_interval = trading_config.get('min_trade_interval', self.trade_stats['min_trade_interval'])
-            self.trade_stats['min_trade_interval'] = min_interval
-            
-            # 计算距离上次交易的时间
-            time_since_last = 0
-            if self.trade_stats['last_trade_time']:
-                time_since_last = (datetime.now() - self.trade_stats['last_trade_time']).total_seconds()
-            
-            # 如果距离上次交易不足15分钟，但是已经接近15分钟（剩余时间<60秒），允许生成决策
-            # 这样可以确保每15分钟都能做出一次决策
-            if time_since_last > 0 and time_since_last < min_interval:
-                remaining_time = min_interval - time_since_last
-                if remaining_time > 60:  # 如果剩余时间超过60秒，跳过
-                    self.logger.warning(
-                        f"{symbol}: [交易频率限制] 距离上次交易仅{time_since_last:.0f}秒 < {min_interval}秒，"
-                        f"剩余{remaining_time:.0f}秒，跳过"
-                    )
-                    return None
-                else:
-                    # 接近15分钟了，允许生成决策（但标记为即将到期）
-                    self.logger.info(
-                        f"{symbol}: [交易频率限制] 距离上次交易{time_since_last:.0f}秒，"
-                        f"剩余{remaining_time:.0f}秒，允许生成决策（接近15分钟）"
-                    )
+        # 0. 检查交易频率限制（针对15分钟K线优化：每15分钟必须生成一次决策）
+        # 从配置读取交易间隔（如果配置中有的话）
+        trading_config = self.config_mgr.get_config('trading', 'trading_optimization', {})
+        min_interval = trading_config.get('min_trade_interval', self.trade_stats['min_trade_interval'])
+        self.trade_stats['min_trade_interval'] = min_interval
+        allow_immediate_reentry = trading_config.get('allow_immediate_reentry', self.allow_immediate_reentry)
+        
+        # 计算当前是否存在持仓
+        current_position_size = 0.0
+        if current_position:
+            try:
+                current_position_size = float(current_position.get('size', 0) or 0.0)
+            except (TypeError, ValueError):
+                current_position_size = 0.0
+        has_active_position = current_position_size > 0
+        
+        # 计算距离上次交易的时间
+        time_since_last = 0
+        if self.trade_stats['last_trade_time']:
+            time_since_last = (datetime.now() - self.trade_stats['last_trade_time']).total_seconds()
+        
+        # 如果存在持仓，则执行冷却限制；否则允许立即重启下一次策略
+        if has_active_position and time_since_last > 0 and time_since_last < min_interval:
+            remaining_time = min_interval - time_since_last
+            if remaining_time > 60:  # 如果剩余时间超过60秒，跳过
+                self.logger.warning(
+                    f"{symbol}: [交易频率限制] 距离上次交易仅{time_since_last:.0f}秒 < {min_interval}秒，"
+                    f"剩余{remaining_time:.0f}秒，跳过"
+                )
+                return None
+            else:
+                # 接近15分钟了，允许生成决策（但标记为即将到期）
+                self.logger.info(
+                    f"{symbol}: [交易频率限制] 距离上次交易{time_since_last:.0f}秒，"
+                    f"剩余{remaining_time:.0f}秒，允许生成决策（接近15分钟）"
+                )
+        elif not has_active_position and time_since_last > 0 and time_since_last < min_interval:
+            self.logger.debug(
+                f"{symbol}: 当前无持仓，忽略{min_interval}秒冷却限制（上次交易{time_since_last:.0f}秒前）"
+            )
             
             # 0.1. 检查日亏损限制（参考ds-main）
             today = datetime.now().date()
@@ -266,11 +287,33 @@ class DecisionEngine:
             # 1. 生成信号
             pair_cfg = self._get_pair_config(symbol)
             signals = self.signal_generator.generate_signals(symbol, market_data)
-            multi_timeframe = (market_data.get('multi_timeframe') or {})
-            entry_direction = multi_timeframe.get('entry_direction', 'neutral')
-            entry_timing = multi_timeframe.get('entry_timing', 'hold')
-            mtf_confidence = multi_timeframe.get('confidence', 0.0)
-            overall_trend = multi_timeframe.get('overall_trend', 'neutral')
+        multi_timeframe = (market_data.get('multi_timeframe') or {})
+        entry_direction = multi_timeframe.get('entry_direction', 'neutral')
+        entry_timing = multi_timeframe.get('entry_timing', 'hold')
+        mtf_confidence = multi_timeframe.get('confidence', 0.0)
+        overall_trend = multi_timeframe.get('overall_trend', 'neutral')
+
+        scene_context = None
+        strategy_plan = None
+        try:
+            scene_context = self.scene_detector.detect(symbol, market_data, current_position)
+            if scene_context:
+                market_data['scene'] = scene_context.to_dict()
+                self.logger.info(
+                    f"[情景识别] {symbol}: 类型={scene_context.scene_type}, "
+                    f"置信度={scene_context.confidence:.2f}, 波动率={scene_context.volatility:.3f}"
+                )
+            strategy_plan = self.strategy_router.build_plan(scene_context, market_data, current_position)
+            if strategy_plan:
+                market_data['strategy_plan'] = strategy_plan.to_dict()
+                self.logger.info(
+                    f"[策略模板] {symbol}: {strategy_plan.name} | 偏向={strategy_plan.bias} | "
+                    f"风险={strategy_plan.risk.get('stop_loss')}"
+                )
+                if entry_direction in (None, '', 'neutral') and strategy_plan.bias in ['long', 'short']:
+                    entry_direction = strategy_plan.bias
+        except Exception as scene_err:
+            self.logger.debug(f"[情景识别] {symbol}: 处理失败 {scene_err}")
             
             # 1.1. 优先检查DeepSeek的结果（必须严格执行）
             ai_signal = None
@@ -433,24 +476,26 @@ class DecisionEngine:
                             action = 'close_short'
                             self.logger.info(f"{symbol}: DeepSeek要求做多，但当前有空仓，先平空")
                         elif current_side == position_side:
-                            # 同方向持仓，检查是否距离上次交易已超过15分钟
-                            # 如果超过15分钟，允许重新评估（可能需要调整仓位或平仓后重新开仓）
                             if time_since_last >= min_interval:
                                 self.logger.info(
                                     f"{symbol}: DeepSeek要求{action}，当前已有{current_side}仓，"
                                     f"但距离上次交易已{time_since_last:.0f}秒 >= {min_interval}秒，"
                                     f"允许重新评估（可能需要先平仓）"
                                 )
-                                # 先平仓，然后开新仓
                                 if current_side == 'long':
                                     action = 'close_long'
-                                    self.logger.info(f"{symbol}: 先平多仓，然后准备开新{action}仓")
+                                    self.logger.info(f"{symbol}: 先平多仓，然后准备开新仓")
                                 elif current_side == 'short':
                                     action = 'close_short'
-                                    self.logger.info(f"{symbol}: 先平空仓，然后准备开新{action}仓")
-                                # 继续执行，会在平仓后生成新的开仓决策
+                                    self.logger.info(f"{symbol}: 先平空仓，然后准备开新仓")
+                            elif allow_immediate_reentry:
+                                self.logger.info(
+                                    f"{symbol}: DeepSeek要求{action}，当前已有{current_side}仓，"
+                                    f"但距离上次交易仅{time_since_last:.0f}秒 < {min_interval}秒，"
+                                    f"根据配置允许立即加仓/调整"
+                                )
+                                # 维持action为long/short以执行加仓
                             else:
-                                # 距离上次交易不足15分钟，不重复开仓
                                 self.logger.info(
                                     f"{symbol}: DeepSeek要求{action}，但当前已有{current_side}仓，"
                                     f"且距离上次交易仅{time_since_last:.0f}秒 < {min_interval}秒，"
@@ -655,6 +700,11 @@ class DecisionEngine:
                     signals=[signal.to_dict() for signal in signals if signal.source == 'ai'],
                     risk_assessment=risk_assessment
                 )
+                if strategy_plan:
+                    decision._strategy_plan = strategy_plan.to_dict()
+                    decision = self.strategy_executor.apply(strategy_plan, decision, market_data, current_position)
+                    if decision is None:
+                        return None
                 
                 # 标记为DeepSeek决策（用于执行引擎识别，必须严格执行）
                 decision._is_deepseek_decision = True
@@ -1007,18 +1057,23 @@ class DecisionEngine:
                 signals=[s.to_dict() for s in signals],
                 risk_assessment=risk_assessment
             )
-            decision._fallback = {
-                'used': bool(fallback_to_internal),
-                'reason': fallback_reason if fallback_reason else None
-            }
-            
-            # 7. 记录决策历史
-            self.decision_history.append(decision)
-            if len(self.decision_history) > 1000:
-                self.decision_history = self.decision_history[-1000:]
-            
-            # 记录决策（合约交易模式）
-            if is_contract_mode:
+        if strategy_plan:
+            decision._strategy_plan = strategy_plan.to_dict()
+            decision = self.strategy_executor.apply(strategy_plan, decision, market_data, current_position)
+            if decision is None:
+                return None
+        decision._fallback = {
+            'used': bool(fallback_to_internal),
+            'reason': fallback_reason if fallback_reason else None
+        }
+        
+        # 7. 记录决策历史
+        self.decision_history.append(decision)
+        if len(self.decision_history) > 1000:
+            self.decision_history = self.decision_history[-1000:]
+        
+        # 记录决策（合约交易模式）
+        if is_contract_mode:
                 action_desc = {
                     'long': '做多',
                     'short': '做空',

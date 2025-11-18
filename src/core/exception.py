@@ -53,3 +53,11 @@ class StrategyException(TradingSystemException):
 class PaymentRequiredException(APIException):
     """API需要付费异常（用于降级策略）"""
     pass
+
+
+class CircuitBreakerTriggered(StrategyException):
+    """事件熔断触发"""
+    def __init__(self, reason: str, cooldown_seconds: int = 900):
+        super().__init__(reason)
+        self.reason = reason
+        self.cooldown_seconds = cooldown_seconds

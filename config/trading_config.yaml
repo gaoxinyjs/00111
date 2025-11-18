@@ -146,11 +146,100 @@ trading_optimization:
   # 交易频率控制（针对15分钟K线优化）
   min_trade_interval: 900  # 最小交易间隔（秒）- 15分钟（针对15分钟K线）
   max_loss_streak: 3  # 最大连续亏损次数，超过后暂停交易（放宽到3次）
+  allow_immediate_reentry: true  # DeepSeek重复信号时允许立即加仓/调整
   
   orderflow_analysis:
     impact_notional: 50000  # 测算冲击成本的基准USDT规模
     block_trade_notional: 80000  # 判定大单的名义金额
     block_trade_window_sec: 180  # 判定大单聚集的时间窗口
+
+scene_detection:
+  trend_adx_threshold: 22
+  range_vol_threshold: 2.5
+  bb_width_threshold: 0.05
+  event_score_threshold: 0.6
+
+event_circuit_breaker:
+  enabled: true
+  default_cooldown_seconds: 900
+  status_log_interval_seconds: 60
+
+# 可选：自定义策略模板（若为空则使用内置默认模板）
+strategy_templates:
+  scenes:
+    trend_up:
+      name: "trend_follow_long"
+      bias: "long"
+      entries:
+        - type: "layer"
+          price_offset: -0.003
+          size_ratio: 0.6
+          order_type: "limit"
+        - type: "layer"
+          price_offset: 0.0
+          size_ratio: 0.4
+          order_type: "market"
+      risk:
+        stop_loss: "trail_atr"
+        take_profit: "partial_scale_out"
+        max_position_pct: 0.25
+    event:
+      name: "event_defense"
+      bias: "neutral"
+      entries:
+        - type: "suspend_new_orders"
+      risk:
+        stop_loss: "reduce_only"
+        take_profit: "n/a"
+        max_position_pct: 0.1
+        circuit_breaker:
+          enabled: true
+          cooldown_seconds: 900
+        hedge:
+          enabled: true
+          mode: "reverse"
+          size_ratio: 1.0
+          order_type: "market"
+          take_profit_pct: 0.008
+          stop_loss_pct: 0.015
+          min_position_pct: 0.08
+          bypass_risk: true
+          reason: "事件触发对冲，锁定收益"
+      trend_reversal:
+        name: "trend_reversal"
+        bias: "short"
+        entries:
+          - type: "layer"
+            price_offset: 0.002
+            size_ratio: 0.5
+            order_type: "limit"
+          - type: "layer"
+            price_offset: 0.004
+            size_ratio: 0.5
+            order_type: "limit"
+        risk:
+          stop_loss: "tight_percent"
+          take_profit: "fixed_rr"
+          max_position_pct: 0.15
+          manage_existing:
+            mode: "reduce"
+            ratio: 0.5
+      range_breakout:
+        name: "range_breakout"
+        bias: "long"
+        entries:
+          - type: "layer"
+            price_offset: 0.001
+            size_ratio: 0.4
+            order_type: "limit"
+          - type: "layer"
+            price_offset: 0.002
+            size_ratio: 0.6
+            order_type: "market"
+        risk:
+          stop_loss: "tight_percent"
+          take_profit: "partial_scale_out"
+          max_position_pct: 0.2
 
 # 信号评分配置
 signal_scoring:

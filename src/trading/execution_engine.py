@@ -133,9 +133,10 @@ class ExecutionEngine:
         try:
             start_time = time.time()
             self.logger.info(f"开始执行决策: {decision.symbol} {decision.action} {decision.position_size:.2%}")
+            explicit_size = getattr(decision, '_explicit_size', None)
             
             # 1. 验证决策
-            if decision.action == 'hold' or decision.position_size <= 0:
+            if decision.action == 'hold' or (decision.position_size <= 0 and (not explicit_size or explicit_size <= 0)):
                 self.logger.info(f"决策为hold或仓位为0，不执行交易")
                 return None
             
@@ -299,11 +300,10 @@ class ExecutionEngine:
                         self.logger.info(f"获取账户余额成功: {available_balance:.2f} USDT")
                 except Exception as api_error:
                     self.logger.warning(f"获取账户余额失败: {api_error}，改用配置默认值")
-                if available_balance == 0:
-                    default_balance = self.config_mgr.get_config('trading', 'auto_trading', {}).get('default_balance', 10000.0)
-                    available_balance = float(default_balance)
-                    self.logger.info(f"使用默认余额: {available_balance:.2f} USDT")
-                position_value = available_balance * decision.position_size
+                    if available_balance == 0:
+                        default_balance = self.config_mgr.get_config('trading', 'auto_trading', {}).get('default_balance', 10000.0)
+                        available_balance = float(default_balance)
+                        self.logger.info(f"使用默认余额: {available_balance:.2f} USDT")
                 # 获取合约信息，确定lot size / tick size等
                 try:
                     from ..data.okx_client import OKXClient
@@ -322,10 +322,15 @@ class ExecutionEngine:
                     self.logger.warning(f"获取合约信息失败: {e}，使用默认合约参数")
                 if ct_val <= 0:
                     ct_val = 1.0
-                base_size_by_value = position_value / (price_for_calc * ct_val)
-                if base_size_by_value <= 0:
-                    self.logger.warning(f"根据仓位比例计算的名义合约数量无效: {base_size_by_value}")
-                    return None
+                if explicit_size:
+                    base_size_by_value = float(explicit_size)
+                    position_value = base_size_by_value * price_for_calc * ct_val
+                else:
+                    position_value = available_balance * decision.position_size
+                    base_size_by_value = position_value / (price_for_calc * ct_val)
+                    if base_size_by_value <= 0:
+                        self.logger.warning(f"根据仓位比例计算的名义合约数量无效: {base_size_by_value}")
+                        return None
             except Exception as e:
                 self.logger.error(f"计算基础仓位失败: {e}")
                 return None
@@ -374,21 +379,22 @@ class ExecutionEngine:
                     take_profit=take_profit_price,
                     tick_size=tick_size,
                 )
-                risk_pct = float(self.risk_config.get('per_trade_risk_pct', 0.005) or 0.005)
-                risk_amount = available_balance * risk_pct
-                stop_distance_abs = abs(stop_loss_price - entry_price_for_sl) if stop_loss_price is not None else 0.0
-                if stop_distance_abs > 0:
-                    risk_based_size = risk_amount / (stop_distance_abs * ct_val)
-                    if risk_based_size <= 0:
-                        self.logger.warning(f"风险控制计算出的下单数量无效: {risk_based_size}")
+                if explicit_size is None:
+                    risk_pct = float(self.risk_config.get('per_trade_risk_pct', 0.005) or 0.005)
+                    risk_amount = available_balance * risk_pct
+                    stop_distance_abs = abs(stop_loss_price - entry_price_for_sl) if stop_loss_price is not None else 0.0
+                    if stop_distance_abs > 0:
+                        risk_based_size = risk_amount / (stop_distance_abs * ct_val)
+                        if risk_based_size <= 0:
+                            self.logger.warning(f"风险控制计算出的下单数量无效: {risk_based_size}")
+                            return None
+                        size = min(base_size_by_value, risk_based_size)
+                    else:
+                        self.logger.warning("风险控制：无法计算有效的止损距离，使用仓位限制进行下单")
+                        size = base_size_by_value
+                    if size <= 0:
+                        self.logger.warning(f"最终下单数量无效，停止执行: size={size}")
                         return None
-                    size = min(base_size_by_value, risk_based_size)
-                else:
-                    self.logger.warning("风险控制：无法计算有效的止损距离，使用仓位限制进行下单")
-                    size = base_size_by_value
-                if size <= 0:
-                    self.logger.warning(f"最终下单数量无效，停止执行: size={size}")
-                    return None
             # 调整数量至交易所允许的精度
             if lot_size > 0:
                 lots = max(1, math.floor(size / lot_size))
