@@ -8,6 +8,7 @@
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from dataclasses import dataclass
+from pathlib import Path
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
 from ..analysis.signal_generator import SignalGenerator, Signal
@@ -73,6 +74,9 @@ class DecisionEngine:
             for pair in trading_pairs_cfg
             if pair.get('symbol')
         }
+        project_root = Path(__file__).parent.parent.parent
+        self._trading_config_path = project_root / "config" / "trading_config.yaml"
+        self._trading_config_mtime = self._get_trading_config_mtime()
         self.default_fallback_multipliers = {
             'ai_hold': 0.6,
             'ai_no_direction': 0.5,
@@ -96,6 +100,27 @@ class DecisionEngine:
             'daily_profit': 0.0,  # 当日累计盈亏（比例）
             'last_reset_date': datetime.now().date(),  # 上次重置日期
         }
+    
+    def _get_trading_config_mtime(self) -> Optional[float]:
+        try:
+            return self._trading_config_path.stat().st_mtime
+        except OSError:
+            return None
+
+    def _refresh_trading_config_if_needed(self):
+        current_mtime = self._get_trading_config_mtime()
+        if current_mtime and (
+            self._trading_config_mtime is None or current_mtime > self._trading_config_mtime
+        ):
+            self.logger.info("检测到trading_config.yaml发生变更，重新加载交易配置")
+            self.config_mgr.reload_config('trading')
+            trading_pairs_cfg = self.config_mgr.get_config('trading', 'trading_pairs') or []
+            self.pair_config_map = {
+                pair.get('symbol'): pair
+                for pair in trading_pairs_cfg
+                if pair.get('symbol')
+            }
+            self._trading_config_mtime = current_mtime
     
     def _get_leverage(self, symbol: str) -> int:
         """
@@ -209,6 +234,7 @@ class DecisionEngine:
             交易决策
         """
         try:
+            self._refresh_trading_config_if_needed()
             self.logger.info(f"开始生成交易决策: {symbol}")
             
             # 0. 检查交易频率限制（针对15分钟K线优化：每15分钟必须生成一次决策）
