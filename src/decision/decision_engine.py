@@ -287,6 +287,20 @@ class DecisionEngine:
                     min_confidence_cfg = max(float(min_confidence_cfg), float(self.dynamic_confidence_threshold))
                 except (TypeError, ValueError):
                     min_confidence_cfg = self.dynamic_confidence_threshold
+
+            # DeepSeek信心度降级阈值：优先使用交易对专属配置，其次使用auto_trading.ai_confidence_threshold
+            ai_conf_threshold_cfg = pair_cfg.get('ai_confidence_threshold')
+            if ai_conf_threshold_cfg is None:
+                ai_conf_threshold_cfg = auto_trading_cfg.get('ai_confidence_threshold', 0.5)
+            try:
+                ai_conf_threshold = float(ai_conf_threshold_cfg)
+            except (TypeError, ValueError):
+                ai_conf_threshold = 0.5
+            if self.dynamic_confidence_threshold is not None:
+                try:
+                    ai_conf_threshold = max(ai_conf_threshold, float(self.dynamic_confidence_threshold))
+                except (TypeError, ValueError):
+                    pass
             
             # 查找DeepSeek信号
             for signal in signals:
@@ -353,9 +367,9 @@ class DecisionEngine:
                 fallback_to_internal = True
                 fallback_reason = fallback_reason or "ai_no_direction"
             
-            if deepseek_confidence_value < 0.65:
+            if deepseek_confidence_value < ai_conf_threshold:
                 self.logger.info(
-                    f"{symbol}: DeepSeek信心度{deepseek_confidence_value:.2f}低于阈值0.65，将尝试降级处理"
+                    f"{symbol}: DeepSeek信心度{deepseek_confidence_value:.2f}低于阈值{ai_conf_threshold:.2f}，将尝试降级处理"
                 )
                 if current_position and current_position.get('size', 0) > 0:
                     self.logger.info(f"{symbol}: DeepSeek信心度过低，准备平仓当前持仓")
