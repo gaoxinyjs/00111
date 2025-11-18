@@ -35,9 +35,10 @@ class Logger:
         # 清除已有的处理器
         logger.handlers.clear()
         
-        # 控制台处理器
+        # 控制台处理器（过滤掉数据采集等噪声日志，只保留决策/交易核心信息）
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(self._get_log_level())
+        console_handler.addFilter(self._build_console_filter())
         console_formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
@@ -128,6 +129,28 @@ class Logger:
         )
         handler.setFormatter(formatter)
         return handler
+
+    def _build_console_filter(self) -> logging.Filter:
+        """构建控制台输出过滤器，屏蔽数据采集等噪声日志"""
+        excluded_keywords = [
+            "[行情数据]",
+            "[K线数据]",
+            "[技术指标]",
+            "[指标汇总]",
+            "[多周期分析]",
+            "[综合前瞻分析]",
+            "[情景识别]",
+            "采集",
+            "数据采集完成",
+            "OKX API",
+        ]
+
+        class ConsoleFilter(logging.Filter):
+            def filter(self, record: logging.LogRecord) -> bool:
+                message = record.getMessage()
+                return not any(keyword in message for keyword in excluded_keywords)
+
+        return ConsoleFilter()
     
     def debug(self, message: str, *args, **kwargs):
         """记录DEBUG级别日志"""
