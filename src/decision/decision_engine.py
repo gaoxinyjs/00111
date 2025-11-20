@@ -170,10 +170,9 @@ class DecisionEngine:
             # 弱信号：止盈2.5%
             take_profit_pct = max(take_profit_pct * 0.83, 0.025)
         
-        # 在杠杆交易中，账户盈亏 = 价格变动百分比 × 杠杆倍数
-        # 所以：价格变动百分比 = 账户盈亏 / 杠杆倍数
-        stop_loss_price_change_pct = stop_loss_pct / leverage
-        take_profit_price_change_pct = take_profit_pct / leverage
+        # 使用价格百分比直接设置止盈止损，避免过度压缩
+        stop_loss_price_change_pct = stop_loss_pct
+        take_profit_price_change_pct = take_profit_pct
         
         if action == 'long':
             # 做多：止损在下方，止盈在上方
@@ -721,74 +720,24 @@ class DecisionEngine:
                     f"{symbol}: DeepSeek决策降级({fallback_reason})，启用多因子与趋势策略继续评估"
                 )
             
-            # 像狼一样：敏锐观察，抓住更多机会（进一步降低阈值）
-            # 如果多时间周期分析建议观望，且信心度很低，强制选择方向而不是hold
-            if entry_timing == 'hold' and mtf_confidence < 0.35:
-                self.logger.warning(
-                    f"{symbol}: 多时间周期分析建议观望且信心度很低(={mtf_confidence:.2f})，"
-                    f"但系统不允许hold，将根据趋势强制选择方向"
+            # 如果多时间周期分析给出观望/观察且信心度不足，直接放弃交易
+            if entry_timing == 'hold' and mtf_confidence < 0.45:
+                self.logger.info(
+                    f"{symbol}: 多时间周期分析建议观望且信心度偏低({mtf_confidence:.2f})，保持观望"
                 )
-                # 根据整体趋势选择方向（继续执行，不返回None）
+                return None
             
-            # 如果多时间周期分析只是watch，且信心度很低，强制选择方向而不是hold
-            if entry_timing == 'watch' and mtf_confidence < 0.40:
-                self.logger.warning(
-                    f"{symbol}: 多时间周期分析建议观察但信心度不足(当前={mtf_confidence:.2f}，要求>=0.45)，"
-                    f"但系统不允许hold，将根据趋势强制选择方向"
+            if entry_timing == 'watch' and mtf_confidence < 0.5:
+                self.logger.info(
+                    f"{symbol}: 多时间周期分析建议观察且信心度不足({mtf_confidence:.2f})，保持观望"
                 )
-                # 根据整体趋势选择方向（继续执行，不返回None）
+                return None
             
             # 2. 融合信号
             combined_signal = self.signal_generator.combine_signals(signals)
-            if not combined_signal or (combined_signal and combined_signal.type == 'hold'):
-                # 像狼一样：抓住更多机会（进一步降低要求）
-                if entry_timing == 'enter' and mtf_confidence >= 0.40 and overall_trend in ['bullish', 'bearish']:
-                    self.logger.info(
-                        f"{symbol}: 🐺像狼一样发现机会！多时间周期建议入场"
-                        f"(方向={entry_direction}, 信心度={mtf_confidence:.2f}, 趋势={overall_trend})"
-                    )
-                    # 如果combined_signal是None，创建一个新的Signal对象
-                    if not combined_signal:
-                        from ..analysis.signal_generator import Signal
-                        combined_signal = Signal(
-                            symbol=symbol,
-                            signal_type='hold',  # 临时值，下面会修改
-                            strength=0.0,
-                            source='multi_timeframe',
-                            data={}
-                        )
-                    # 根据多时间周期分析的方向生成信号（像狼一样快速出击）
-                    if entry_direction == 'long':
-                        combined_signal.type = 'buy'
-                        combined_signal.strength = min(0.7, mtf_confidence * 0.9)  # 根据信心度调整强度
-                    elif entry_direction == 'short':
-                        combined_signal.type = 'sell'
-                        combined_signal.strength = min(0.7, mtf_confidence * 0.9)  # 根据信心度调整强度
-                elif entry_timing == 'watch' and mtf_confidence >= 0.35:
-                    # 即使只是watch，但如果信心度足够，也可以尝试（抓住更多机会）
-                    self.logger.info(
-                        f"{symbol}: 🐺像狼一样尝试机会！多时间周期观察模式但信心度足够"
-                        f"(方向={entry_direction}, 信心度={mtf_confidence:.2f}, 趋势={overall_trend})"
-                    )
-                    # 如果combined_signal是None，创建一个新的Signal对象
-                    if not combined_signal:
-                        from ..analysis.signal_generator import Signal
-                        combined_signal = Signal(
-                            symbol=symbol,
-                            signal_type='hold',  # 临时值，下面会修改
-                            strength=0.0,
-                            source='multi_timeframe',
-                            data={}
-                        )
-                    if entry_direction == 'long':
-                        combined_signal.type = 'buy'
-                        combined_signal.strength = min(0.6, mtf_confidence * 0.85)  # 稍低的强度
-                    elif entry_direction == 'short':
-                        combined_signal.type = 'sell'
-                        combined_signal.strength = min(0.6, mtf_confidence * 0.85)  # 稍低的强度
-                else:
-                    self.logger.info(f"{symbol}: 融合信号为hold，且多时间周期分析不支持入场，保持观望")
-                    return None
+            if not combined_signal or combined_signal.type == 'hold':
+                self.logger.info(f"{symbol}: 融合信号不足或为hold，保持观望")
+                return None
             
             # 确保combined_signal存在（防御性编程）
             if not combined_signal:
@@ -801,35 +750,9 @@ class DecisionEngine:
             
             # 判断交易动作和方向
             signal_type = combined_signal.type
-            # 不允许hold，强制根据趋势选择方向
-            # 根据整体趋势选择long或short
-            multi_timeframe = market_data.get('multi_timeframe', {})
-            overall_trend = multi_timeframe.get('overall_trend', '').lower()
-            
-            if '上涨' in overall_trend or '看涨' in overall_trend or 'up' in overall_trend:
-                action = 'long'
-                self.logger.info(f"{symbol}: 根据整体趋势（上涨），强制选择long")
-            elif '下跌' in overall_trend or '看跌' in overall_trend or 'down' in overall_trend:
-                action = 'short'
-                self.logger.info(f"{symbol}: 根据整体趋势（下跌），强制选择short")
-            else:
-                # 如果无法判断趋势，根据当前价格变化选择
-                current_price = market_data.get('price', 0)
-                change_24h = market_data.get('change_24h', 0)
-                try:
-                    change_24h_float = float(change_24h) if change_24h else 0.0
-                    if change_24h_float > 0:
-                        action = 'long'
-                        self.logger.info(f"{symbol}: 根据24h涨跌（+{change_24h_float:.2f}%），强制选择long")
-                    else:
-                        action = 'short'
-                        self.logger.info(f"{symbol}: 根据24h涨跌（{change_24h_float:.2f}%），强制选择short")
-                except (ValueError, TypeError):
-                    # 如果无法判断，默认选择long
-                    action = 'long'
-                    self.logger.info(f"{symbol}: 无法判断趋势，默认选择long")
-            
-            position_side = 'long' if action == 'long' else 'short'
+            if signal_type == 'hold':
+                self.logger.info(f"{symbol}: 综合信号为hold，保持观望")
+                return None
             
             if is_contract_mode:
                 # 合约模式：buy->long做多, sell->short做空
@@ -844,9 +767,15 @@ class DecisionEngine:
                     else:
                         self.logger.info(f"{symbol}: 做空被禁用，保持观望")
                         return None
+                else:
+                    self.logger.info(f"{symbol}: 未知信号类型({signal_type})，保持观望")
+                    return None
             else:
                 # 现货模式：buy/sell
-                action = signal_type
+                if signal_type != 'buy':
+                    self.logger.info(f"{symbol}: 现货模式仅支持做多，信号={signal_type}，保持观望")
+                    return None
+                action = 'buy'
                 position_side = 'long'  # 现货只能做多
             
             # 合约交易：检查当前持仓，决定开仓还是平仓

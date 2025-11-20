@@ -135,11 +135,9 @@ class RiskEvaluator:
                     # 弱信号：止盈2.5%
                     account_take_profit_pct = max(account_take_profit_pct * 0.83, 0.025)
                 
-                # 计算价格变动百分比（考虑杠杆倍数）
-                # 账户盈亏 = 价格变动百分比 × 杠杆倍数
-                # 所以：价格变动百分比 = 账户盈亏 / 杠杆倍数
-                stop_loss_price_change_pct = account_stop_loss_pct / leverage
-                take_profit_price_change_pct = account_take_profit_pct / leverage
+                # 直接在价格层面设置止盈止损，避免被杠杆换算后过于紧密
+                stop_loss_price_change_pct = account_stop_loss_pct
+                take_profit_price_change_pct = account_take_profit_pct
                 
                 if signal.type == 'buy':
                     # 做多：止损价格 = 开仓价格 * (1 - 价格变动百分比)，止盈价格 = 开仓价格 * (1 + 价格变动百分比)
@@ -213,19 +211,13 @@ class RiskEvaluator:
             
             # 6. 综合判断（针对15分钟K线优化：放宽风险等级要求）
             if len(risk_result['warnings']) == 0:
-                # 如果没有警告，根据风险等级决定（放宽要求）
-                if risk_level in ['low', 'medium', 'high']:
-                    # 允许low、medium、high风险等级（放宽要求，提高交易频率）
+                # 没有额外警告时仍需依据风险等级严格过滤
+                if risk_level in ['low', 'medium']:
                     risk_result['passed'] = True
-                    if risk_level == 'high':
-                        self.logger.debug(
-                            f"{symbol}: [风险评估] 风险等级high，允许交易（针对15分钟K线优化）"
-                        )
-                elif risk_level == 'very_high' and position_size <= 0.01:  # 极小仓位允许very_high风险
-                    # 如果是极小仓位（<=1%），允许very_high风险
+                elif risk_level == 'high' and position_size <= 0.02:
                     risk_result['passed'] = True
-                    self.logger.debug(
-                        f"{symbol}: [风险评估] 风险等级very_high但仓位极小({position_size:.2%})，允许交易"
+                    self.logger.info(
+                        f"{symbol}: [风险评估] 风险等级为high，但仓位较小({position_size:.2%})，谨慎放行"
                     )
                 else:
                     self.logger.warning(
