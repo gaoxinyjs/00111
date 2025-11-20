@@ -112,8 +112,11 @@ class TradingEngine:
         
         ai_position_config = self.config_mgr.get_config('trading', 'ai_position_management', {}) or {}
         self.ai_review_enabled = ai_position_config.get('enabled', True)
+        # 强制设置为60秒（1分钟），确保每分钟检查一次持仓
         try:
-            self.ai_review_interval = max(int(ai_position_config.get('review_interval', 60)), 5)
+            config_interval = int(ai_position_config.get('review_interval', 60))
+            # 如果配置的间隔小于60秒，使用60秒；否则使用配置值
+            self.ai_review_interval = max(60, config_interval)
         except (TypeError, ValueError):
             self.ai_review_interval = 60
         max_adj = ai_position_config.get('max_adjustments_per_cycle')
@@ -209,6 +212,73 @@ class TradingEngine:
         except Exception as e:
             self.logger.error(f"账户初始化失败: {e}")
     
+    def _get_next_15min_interval(self, current_time: Optional[datetime] = None) -> datetime:
+        """
+        计算下一个15分钟整点时间（如9:00、9:15、9:30、9:45）
+        
+        Args:
+            current_time: 当前时间，如果为None则使用当前时间
+            
+        Returns:
+            下一个15分钟整点的datetime对象
+        """
+        if current_time is None:
+            current_time = datetime.now()
+        
+        # 获取当前时间的分钟数
+        current_minute = current_time.minute
+        
+        # 计算下一个15分钟整点
+        # 例如：如果现在是9:07，下一个整点是9:15
+        # 如果现在是9:15，下一个整点是9:30
+        next_minute = ((current_minute // 15) + 1) * 15
+        
+        if next_minute >= 60:
+            # 如果超过60分钟，则进入下一小时
+            next_time = current_time.replace(
+                hour=(current_time.hour + 1) % 24,
+                minute=0,
+                second=0,
+                microsecond=0
+            )
+        else:
+            # 在同一小时内
+            next_time = current_time.replace(
+                minute=next_minute,
+                second=0,
+                microsecond=0
+            )
+        
+        return next_time
+    
+    async def _wait_until_next_15min_interval(self):
+        """
+        等待到下一个15分钟整点时间
+        """
+        current_time = datetime.now()
+        next_interval = self._get_next_15min_interval(current_time)
+        
+        # 计算需要等待的秒数
+        wait_seconds = (next_interval - current_time).total_seconds()
+        
+        if wait_seconds > 0:
+            self.logger.info(
+                f"⏰ [等待整点时间] 当前时间: {current_time.strftime('%H:%M:%S')}, "
+                f"下一个15分钟整点: {next_interval.strftime('%H:%M:%S')}, "
+                f"等待时间: {wait_seconds:.1f}秒"
+            )
+            await asyncio.sleep(wait_seconds)
+        else:
+            # 如果已经过了整点，等待下一个整点
+            next_interval = self._get_next_15min_interval(next_interval)
+            wait_seconds = (next_interval - current_time).total_seconds()
+            self.logger.info(
+                f"⏰ [等待整点时间] 当前时间: {current_time.strftime('%H:%M:%S')}, "
+                f"下一个15分钟整点: {next_interval.strftime('%H:%M:%S')}, "
+                f"等待时间: {wait_seconds:.1f}秒"
+            )
+            await asyncio.sleep(wait_seconds)
+    
     async def _main_trading_loop(self):
         """主交易循环"""
         try:
@@ -216,10 +286,17 @@ class TradingEngine:
         except (KeyError, TypeError):
             signal_interval = 300  # 默认5分钟
         
-        self.logger.info(f"主交易循环启动，信号生成间隔: {signal_interval}秒")
+        self.logger.info(f"主交易循环启动，将在每15分钟整点执行交易（如9:00、9:15、9:30、9:45）")
+        
+        # 首次启动时，等待到下一个15分钟整点
+        await self._wait_until_next_15min_interval()
         
         while self.is_running:
             try:
+                # 记录当前执行时间
+                execution_time = datetime.now()
+                self.logger.info(f"🕐 [整点执行] 当前时间: {execution_time.strftime('%H:%M:%S')}，开始执行交易逻辑")
+                
                 # 1. 数据采集（已在后台运行）
                 # 等待数据采集完成
                 await asyncio.sleep(1)
@@ -285,8 +362,8 @@ class TradingEngine:
                 # 8. 风险监控
                 await self._monitor_risk()
                 
-                # 等待下次循环
-                await asyncio.sleep(signal_interval)
+                # 等待到下一个15分钟整点
+                await self._wait_until_next_15min_interval()
             
             except Exception as e:
                 self.logger.error(f"主交易循环出错: {e}")
@@ -1279,15 +1356,22 @@ class TradingEngine:
                             })
                             await self._calculate_profit(order, trade_info)
                             
-                            # 平仓成功后，立即生成下一次交易决策
+                            # 平仓成功后，等待1分钟后生成下一次交易决策
                             self.logger.info(
-                                f"🔄 [平仓后立即决策] {symbol}: 平仓成功，立即生成下一次交易决策（跳过交易频率限制）"
+                                f"🔄 [平仓后延迟决策] {symbol}: 平仓成功，等待1分钟后生成下一次交易决策（跳过交易频率限制）"
                             )
                             
                             # 等待一小段时间确保平仓订单完全成交
                             await asyncio.sleep(2)
                             
-                            # 立即生成下一次交易决策
+                            # 等待1分钟后再生成下一次交易决策
+                            await asyncio.sleep(60)
+                            
+                            self.logger.info(
+                                f"⏰ [延迟决策触发] {symbol}: 1分钟等待完成，开始生成新的交易决策"
+                            )
+                            
+                            # 生成下一次交易决策
                             try:
                                 # 临时保存并清除 last_trade_time，以跳过交易频率限制
                                 saved_last_trade_time = self.decision_engine.trade_stats.get('last_trade_time')
@@ -1314,13 +1398,13 @@ class TradingEngine:
                                         
                                         if new_decisions:
                                             self.logger.info(
-                                                f"✅ [平仓后立即决策] {symbol}: 已生成新的交易计划，准备执行"
+                                                f"✅ [平仓后延迟决策] {symbol}: 已生成新的交易计划，准备执行"
                                             )
-                                            # 立即执行新决策（异步执行，不阻塞）
+                                            # 执行新决策（异步执行，不阻塞）
                                             asyncio.create_task(self._execute_trades(new_decisions))
                                         else:
                                             self.logger.info(
-                                                f"ℹ️ [平仓后立即决策] {symbol}: 未生成新的交易计划，保持观望"
+                                                f"ℹ️ [平仓后延迟决策] {symbol}: 未生成新的交易计划，保持观望"
                                             )
                                 finally:
                                     # 恢复 last_trade_time（如果之前有值）
@@ -1457,11 +1541,18 @@ class TradingEngine:
                             f"{float(adjust_size):.2%}" if isinstance(adjust_size, (int, float)) else str(adjust_size)
                         )
                         
-                        self.logger.info(
-                            f"[AI仓位调整{source_tag}] {symbol}: 建议{action}, "
-                            f"调整比例: {adjust_size_str}, "
-                            f"原因: {reason}"
-                        )
+                        # 如果是平仓建议，使用更醒目的日志
+                        if action == 'close':
+                            self.logger.warning(
+                                f"🚨 [AI建议平仓{source_tag}] {symbol}: AI分析建议立即平仓！"
+                                f"原因: {reason} | 调整比例: {adjust_size_str}"
+                            )
+                        else:
+                            self.logger.info(
+                                f"[AI仓位调整{source_tag}] {symbol}: 建议{action}, "
+                                f"调整比例: {adjust_size_str}, "
+                                f"原因: {reason}"
+                            )
                         
                         # 生成调整决策
                         if action == 'close':
@@ -1470,14 +1561,22 @@ class TradingEngine:
                             decision = await self._create_close_decision(
                                 symbol, position, reason or 'AI建议平仓', symbol_market_data, trigger_price
                             )
+                            if decision:
+                                self.logger.warning(
+                                    f"⚡ [立即执行AI平仓] {symbol}: 正在执行AI建议的平仓操作..."
+                                )
                         else:
                             decision = await self._create_adjustment_decision(
                                 symbol, position, adjustment, symbol_market_data
                             )
                         
                         if decision:
-                            # 执行调整
+                            # 执行调整（如果是平仓，立即执行，不等待）
                             await self._execute_trades([decision])
+                            if action == 'close':
+                                self.logger.warning(
+                                    f"✅ [AI平仓执行完成] {symbol}: AI建议的平仓操作已执行"
+                                )
                             
                             if max_adjustments and not is_risk_event:
                                 adjustments_executed += 1
@@ -2069,9 +2168,14 @@ class TradingEngine:
                         # 等待平仓完成（给一点时间让订单成交）
                         await asyncio.sleep(2)
                         
-                        # 生成下一次交易计划
+                        # 等待1分钟后再生成下一次交易计划
                         self.logger.info(
-                            f"📋 [生成下一次计划] {symbol}: 强制平仓后，立即生成下一次交易计划"
+                            f"📋 [生成下一次计划] {symbol}: 强制平仓后，等待1分钟后生成下一次交易计划"
+                        )
+                        await asyncio.sleep(60)
+                        
+                        self.logger.info(
+                            f"⏰ [延迟计划触发] {symbol}: 1分钟等待完成，开始生成新的交易计划"
                         )
                         
                         # 重新生成信号和决策
@@ -2155,49 +2259,66 @@ class TradingEngine:
     
     async def _ai_position_review_loop(self):
         """
-        AI持仓审查循环：按配置的间隔触发AI分析，动态调整仓位
+        AI持仓审查循环：每分钟检查一次持仓，如果AI分析建议平仓，立即执行平仓
         """
         if not self.ai_review_enabled:
             return
         
-        self.logger.info(f"AI仓位审查任务启动，检查间隔: {self.ai_review_interval}秒")
+        self.logger.info(f"🤖 [AI持仓审查] 任务启动，每分钟检查一次持仓，AI建议平仓时立即执行")
         
         try:
             while self.is_running:
                 cycle_start = datetime.now()
                 
                 try:
-                    positions = self.position_manager.get_all_positions()
-                    symbols = [
-                        symbol for symbol, pos in positions.items()
-                        if pos.get('size', 0) > 0
-                    ]
+                    # 从API实时获取最新持仓数据
+                    if self.okx_client is None:
+                        self.okx_client = await get_okx_client()
+                    positions_result = await self.okx_client.async_get_positions()
                     
-                    if not symbols:
-                        self.logger.debug("[AI仓位审查] 当前无持仓，跳过本次检查")
+                    # 处理不同的返回格式
+                    if isinstance(positions_result, dict):
+                        if positions_result.get('code') != '0':
+                            self.logger.warning("[AI持仓审查] 获取持仓失败，跳过本次检查")
+                        else:
+                            positions_list = positions_result.get('data', [])
+                    elif isinstance(positions_result, list):
+                        positions_list = positions_result
                     else:
-                        market_data = self._get_cached_market_data(
-                            symbols=symbols,
-                            max_age_seconds=max(5, self.ai_review_interval)
-                        )
-                        if market_data is None:
+                        positions_list = []
+                    
+                    if not positions_list:
+                        self.logger.debug("[AI持仓审查] 当前无持仓，跳过本次检查")
+                    else:
+                        # 提取有持仓的交易对
+                        symbols = [pos.get('instId', '') for pos in positions_list if pos.get('instId')]
+                        symbols = [s for s in symbols if s]
+                        
+                        if symbols:
+                            # 获取市场数据
                             market_data = await self._collect_market_data(symbols)
                             if market_data:
-                                self._update_market_data_cache(market_data, symbols=list(market_data.keys()))
-                        if market_data:
-                            await self._check_position_adjustments(
-                                market_data,
-                                enable_ai_analysis=True,
-                                max_adjustments=self.ai_review_max_adjustments,
-                                source="ai_review"
-                            )
+                                self._update_market_data_cache(market_data)
+                                
+                                # 执行AI持仓分析和调整（如果AI建议平仓，立即执行）
+                                await self._check_position_adjustments(
+                                    market_data,
+                                    enable_ai_analysis=True,  # 启用AI分析
+                                    max_adjustments=None,  # 不限制调整次数，确保平仓能立即执行
+                                    source="ai_review_minute"
+                                )
+                                self.logger.info(f"✅ [AI持仓审查] 完成本次检查，已分析 {len(symbols)} 个持仓")
+                            else:
+                                self.logger.warning("[AI持仓审查] 市场数据为空，跳过本次检查")
                         else:
-                            self.logger.debug("[AI仓位审查] 市场数据为空，跳过本次检查")
+                            self.logger.debug("[AI持仓审查] 当前无有效持仓，跳过本次检查")
+                            
                 except Exception as loop_err:
-                    self.logger.error(f"AI仓位审查执行失败: {loop_err}", exc_info=True)
+                    self.logger.error(f"❌ [AI持仓审查] 执行失败: {loop_err}", exc_info=True)
                 
+                # 计算本次循环耗时，确保每分钟执行一次
                 elapsed = (datetime.now() - cycle_start).total_seconds()
-                sleep_time = max(self.ai_review_interval - elapsed, 1)
+                sleep_time = max(60 - elapsed, 1)  # 确保间隔为60秒（1分钟）
                 await asyncio.sleep(sleep_time)
         
         except asyncio.CancelledError:

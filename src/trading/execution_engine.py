@@ -333,6 +333,17 @@ class ExecutionEngine:
             # 3. 创建订单（合约交易：设置持仓方向和是否平仓）
             is_closing = decision.action in ['close_long', 'close_short']
             
+            # ⚠️ 重要：平仓前验证持仓是否存在
+            if is_closing:
+                # 验证持仓是否真的存在
+                position_exists = await self._verify_position_before_close(symbol, decision.action, decision.position_side)
+                if not position_exists:
+                    self.logger.warning(
+                        f"⚠️ {symbol}: 尝试平仓但持仓不存在，跳过平仓操作 | "
+                        f"action={decision.action}, pos_side={decision.position_side}"
+                    )
+                    return None
+            
             # 合约交易：对于单向持仓模式，使用"net"而不是具体的long/short
             # 只有在平仓或明确需要双向持仓时才使用long/short
             pos_side_for_order = None  # None表示使用"net"模式（单向持仓）
@@ -804,6 +815,76 @@ class ExecutionEngine:
         except Exception as e:
             self.logger.error(f"开仓前检查失败 {symbol}: {e}")
             return 'error'
+    
+    async def _verify_position_before_close(self, symbol: str, action: str, pos_side: str) -> bool:
+        """
+        平仓前验证持仓是否存在
+        
+        Args:
+            symbol: 交易对符号
+            action: 交易动作（close_long/close_short）
+            pos_side: 持仓方向（long/short/net）
+            
+        Returns:
+            True: 持仓存在，可以平仓
+            False: 持仓不存在，跳过平仓
+        """
+        try:
+            from ..data.okx_client import get_okx_client
+            okx_client = await get_okx_client()
+            
+            # 从交易所实时获取持仓信息
+            positions_result = await okx_client.async_get_positions(symbol)
+            if not positions_result:
+                self.logger.debug(f"🔍 [平仓验证] {symbol}: 未获取到持仓信息")
+                return False
+            
+            # 处理不同的返回格式
+            positions = []
+            if isinstance(positions_result, dict):
+                if positions_result.get('code') == '0':
+                    positions = positions_result.get('data', [])
+            elif isinstance(positions_result, list):
+                positions = positions_result
+            
+            # 查找有效的持仓（持仓量>0）
+            for pos in positions:
+                pos_size = float(pos.get('pos', 0) or pos.get('posSz', 0) or 0)
+                if abs(pos_size) < 1e-8:  # 持仓量为0或接近0
+                    continue
+                
+                # 获取持仓方向
+                actual_pos_side = pos.get('posSide', 'net')
+                
+                # 判断持仓方向是否匹配
+                if pos_side == 'net' or actual_pos_side == 'net':
+                    # 单向持仓模式：根据持仓数量判断方向
+                    if action == 'close_long' and pos_size > 0:
+                        self.logger.debug(f"✅ [平仓验证] {symbol}: 找到多仓，持仓量={pos_size:.4f}")
+                        return True
+                    elif action == 'close_short' and pos_size < 0:
+                        self.logger.debug(f"✅ [平仓验证] {symbol}: 找到空仓，持仓量={abs(pos_size):.4f}")
+                        return True
+                else:
+                    # 双向持仓模式：根据posSide判断
+                    if action == 'close_long' and actual_pos_side == 'long' and pos_size > 0:
+                        self.logger.debug(f"✅ [平仓验证] {symbol}: 找到多仓，持仓量={pos_size:.4f}")
+                        return True
+                    elif action == 'close_short' and actual_pos_side == 'short' and pos_size > 0:
+                        self.logger.debug(f"✅ [平仓验证] {symbol}: 找到空仓，持仓量={pos_size:.4f}")
+                        return True
+            
+            # 没有找到匹配的持仓
+            self.logger.debug(
+                f"❌ [平仓验证] {symbol}: 未找到匹配的持仓 | "
+                f"action={action}, pos_side={pos_side}, 持仓列表={len(positions)}"
+            )
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"平仓前验证持仓失败 {symbol}: {e}")
+            # 验证失败时，为了安全起见，返回False（不执行平仓）
+            return False
     
     async def _close_opposite_position(self, symbol: str, position: Dict[str, Any], position_side: str) -> bool:
         """
