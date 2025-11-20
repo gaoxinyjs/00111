@@ -1127,12 +1127,32 @@ class TradingEngine:
                                 is_deepseek_decision = True
                                 break
                 
-                # 如果是DeepSeek决策，跳过所有检查，直接执行
+                # 如果是DeepSeek决策，检查信心度（开仓操作需要信心度>0.65）
                 if is_deepseek_decision:
-                    self.logger.info(
-                        f"🎯 [严格执行DeepSeek决策] {symbol}: "
-                        f"这是DeepSeek的决策，跳过所有检查，直接执行"
-                    )
+                    is_closing = self._is_closing_position(symbol, decision.action)
+                    
+                    # 只有开仓操作需要检查信心度，平仓操作不需要（因为平仓是保护性操作）
+                    if not is_closing:
+                        # DeepSeek开仓决策必须信心度>0.65才执行
+                        deepseek_min_confidence = 0.65
+                        if decision.confidence <= deepseek_min_confidence:
+                            self.logger.warning(
+                                f"⚠️ [DeepSeek开仓拒绝] {symbol}: "
+                                f"DeepSeek信心度{decision.confidence:.2f}低于阈值{deepseek_min_confidence}，跳过开仓 | "
+                                f"建议: {decision.reasoning or 'N/A'}"
+                            )
+                            continue  # 跳过开仓
+                        else:
+                            self.logger.info(
+                                f"✅ [DeepSeek开仓通过] {symbol}: "
+                                f"DeepSeek信心度{decision.confidence:.2f}高于阈值{deepseek_min_confidence}，允许开仓"
+                            )
+                    else:
+                        # 平仓操作不需要检查信心度，直接执行
+                        self.logger.info(
+                            f"🎯 [严格执行DeepSeek平仓] {symbol}: "
+                            f"这是DeepSeek的平仓决策，跳过所有检查，直接执行"
+                        )
                 else:
                     # 非DeepSeek决策，进行常规检查
                     # 检查是否应该执行
@@ -1200,6 +1220,45 @@ class TradingEngine:
                 
                 # 🔍 检查是否有待成交的委托订单，避免重复创建（只检查开仓订单）
                 if not self._is_closing_position(symbol, decision.action):
+                    # ⚠️ 首先检查是否已有持仓，避免重复开仓
+                    try:
+                        if self.okx_client is None:
+                            self.okx_client = await get_okx_client()
+                        positions_result = await self.okx_client.async_get_positions()
+                        
+                        # 处理不同的返回格式
+                        positions_list = []
+                        if isinstance(positions_result, dict):
+                            if positions_result.get('code') == '0':
+                                positions_list = positions_result.get('data', [])
+                        elif isinstance(positions_result, list):
+                            positions_list = positions_result
+                        
+                        # 检查是否有持仓
+                        has_position = False
+                        existing_position_side = None
+                        for pos_data in positions_list:
+                            if pos_data.get('instId') == symbol:
+                                pos_str = pos_data.get('pos', '0')
+                                position_size = abs(float(pos_str)) if pos_str else 0
+                                if position_size > 0:
+                                    has_position = True
+                                    existing_position_side = 'long' if float(pos_str) > 0 else 'short'
+                                    self.logger.warning(
+                                        f"⚠️ {symbol}: 已有持仓，跳过重复开仓 | "
+                                        f"持仓方向={existing_position_side}, "
+                                        f"持仓量={position_size:.4f} | "
+                                        f"如需改变仓位，请先平仓"
+                                    )
+                                    break
+                        
+                        if has_position:
+                            # 已有持仓，跳过开仓操作
+                            continue
+                    except Exception as e:
+                        self.logger.warning(f"检查持仓失败 {symbol}: {e}，继续执行")
+                    
+                    # 然后检查是否有待成交的委托订单
                     existing_pending = self.pending_orders.get(symbol)
                     if existing_pending:
                         existing_order = existing_pending.get('order')
@@ -1541,12 +1600,21 @@ class TradingEngine:
                             f"{float(adjust_size):.2%}" if isinstance(adjust_size, (int, float)) else str(adjust_size)
                         )
                         
-                        # 如果是平仓建议，使用更醒目的日志
+                        # 如果是平仓建议，使用更醒目的日志（快速获利场景）
                         if action == 'close':
+                            # 判断是否为快速获利场景
+                            profit_pct = adjustment.get('profit_pct', 0)
+                            is_profit = profit_pct > 0
+                            profit_info = f"盈利{profit_pct:.2f}%" if is_profit else f"亏损{abs(profit_pct):.2f}%"
+                            
                             self.logger.warning(
-                                f"🚨 [AI建议平仓{source_tag}] {symbol}: AI分析建议立即平仓！"
-                                f"原因: {reason} | 调整比例: {adjust_size_str}"
+                                f"🚨 [AI建议平仓{source_tag}] {symbol}: AI分析建议立即平仓（快速获利）！"
+                                f"原因: {reason} | 当前盈亏: {profit_info} | 调整比例: {adjust_size_str}"
                             )
+                            if is_profit:
+                                self.logger.info(
+                                    f"💰 [快速获利] {symbol}: AI建议锁定利润，立即平仓 | 盈利: {profit_pct:.2f}%"
+                                )
                         else:
                             self.logger.info(
                                 f"[AI仓位调整{source_tag}] {symbol}: 建议{action}, "
@@ -1558,8 +1626,10 @@ class TradingEngine:
                         if action == 'close':
                             trigger_price = adjustment.get('stop_loss_price') or adjustment.get('take_profit_price') \
                                 or symbol_market_data.get('price', 0)
+                            # 传递adjustment信息，以便标记为DeepSeek决策
                             decision = await self._create_close_decision(
-                                symbol, position, reason or 'AI建议平仓', symbol_market_data, trigger_price
+                                symbol, position, reason or 'AI建议平仓', symbol_market_data, trigger_price,
+                                adjustment=adjustment  # 传递adjustment以便识别AI建议
                             )
                             if decision:
                                 self.logger.warning(
@@ -1572,11 +1642,28 @@ class TradingEngine:
                         
                         if decision:
                             # 执行调整（如果是平仓，立即执行，不等待）
-                            await self._execute_trades([decision])
+                            # 对于AI审计仓位的平仓操作，立即执行以快速获利
                             if action == 'close':
+                                profit_pct = adjustment.get('profit_pct', 0)
+                                is_profit = profit_pct > 0
+                                profit_info = f"盈利{profit_pct:.2f}%" if is_profit else f"亏损{abs(profit_pct):.2f}%"
+                                
                                 self.logger.warning(
-                                    f"✅ [AI平仓执行完成] {symbol}: AI建议的平仓操作已执行"
+                                    f"⚡ [立即执行AI平仓] {symbol}: 正在执行AI建议的平仓操作（快速获利）... | 当前盈亏: {profit_info}"
                                 )
+                            
+                            await self._execute_trades([decision])
+                            
+                            if action == 'close':
+                                profit_pct = adjustment.get('profit_pct', 0)
+                                is_profit = profit_pct > 0
+                                profit_info = f"盈利{profit_pct:.2f}%" if is_profit else f"亏损{abs(profit_pct):.2f}%"
+                                
+                                self.logger.warning(
+                                    f"✅ [AI平仓执行完成] {symbol}: AI建议的平仓操作已执行 | 锁定盈亏: {profit_info}"
+                                )
+                                if is_profit:
+                                    self.logger.info(f"💰 [快速获利成功] {symbol}: 已成功锁定利润 {profit_pct:.2f}%")
                             
                             if max_adjustments and not is_risk_event:
                                 adjustments_executed += 1
@@ -1804,7 +1891,12 @@ class TradingEngine:
                 else:
                     decision_action = 'close_short'
                 
-                return TradingDecision(
+                # 检查是否为AI建议（来自DeepSeek）
+                is_ai_recommendation = 'AI建议' in adjustment.get('reason', '') or adjustment.get('analysis', {})
+                reason = adjustment.get('reason', 'AI建议平仓')
+                
+                # 创建决策
+                decision = TradingDecision(
                     symbol=symbol,
                     action=decision_action,
                     position_size=1.0,  # 全部平仓
@@ -1813,10 +1905,28 @@ class TradingEngine:
                     stop_loss=None,
                     take_profit=None,
                     confidence=adjustment.get('confidence', 0.8),
-                    reasoning=adjustment.get('reason', 'AI建议平仓'),
+                    reasoning=reason,
                     signals=[],
                     risk_assessment={'passed': True}  # 平仓操作必须执行，跳过风险检查
                 )
+                
+                # 如果是AI建议，标记为DeepSeek决策，并添加AI分析信号
+                if is_ai_recommendation:
+                    decision._is_deepseek_decision = True
+                    # 添加AI分析信号，以便被识别为DeepSeek决策
+                    ai_analysis = adjustment.get('analysis', {})
+                    if ai_analysis:
+                        decision.signals = [{
+                            'source': 'ai',
+                            'data': {
+                                'analysis': ai_analysis,
+                                'direction': 'close',
+                                'recommendation': ai_analysis.get('recommendation', '平仓')
+                            }
+                        }]
+                    self.logger.info(f"✅ [AI审计仓位] {symbol}: 标记为DeepSeek决策，将跳过常规检查")
+                
+                return decision
             elif action == 'add':
                 # 加仓
                 if position_side == 'long':
@@ -1824,7 +1934,12 @@ class TradingEngine:
                 else:
                     decision_action = 'short'
                 
-                return TradingDecision(
+                # 检查是否为AI建议（来自DeepSeek）
+                is_ai_recommendation = 'AI建议' in adjustment.get('reason', '') or adjustment.get('analysis', {})
+                reason = adjustment.get('reason', 'AI建议加仓')
+                
+                # 创建决策
+                decision = TradingDecision(
                     symbol=symbol,
                     action=decision_action,
                     position_size=adjust_size,
@@ -1833,10 +1948,28 @@ class TradingEngine:
                     stop_loss=adjustment.get('stop_loss_price'),
                     take_profit=adjustment.get('take_profit_price'),
                     confidence=adjustment.get('confidence', 0.7),
-                    reasoning=adjustment.get('reason', 'AI建议加仓'),
+                    reasoning=reason,
                     signals=[],
                     risk_assessment={}
                 )
+                
+                # 如果是AI建议，标记为DeepSeek决策
+                if is_ai_recommendation:
+                    decision._is_deepseek_decision = True
+                    # 添加AI分析信号
+                    ai_analysis = adjustment.get('analysis', {})
+                    if ai_analysis:
+                        decision.signals = [{
+                            'source': 'ai',
+                            'data': {
+                                'analysis': ai_analysis,
+                                'direction': 'add',
+                                'recommendation': ai_analysis.get('recommendation', '加仓')
+                            }
+                        }]
+                    self.logger.info(f"✅ [AI审计仓位] {symbol}: 标记为DeepSeek决策，将跳过常规检查")
+                
+                return decision
             elif action == 'reduce':
                 # 减仓（通过部分平仓实现）
                 if position_side == 'long':
@@ -1844,7 +1977,12 @@ class TradingEngine:
                 else:
                     decision_action = 'close_short'
                 
-                return TradingDecision(
+                # 检查是否为AI建议（来自DeepSeek）
+                is_ai_recommendation = 'AI建议' in adjustment.get('reason', '') or adjustment.get('analysis', {})
+                reason = adjustment.get('reason', 'AI建议减仓')
+                
+                # 创建决策
+                decision = TradingDecision(
                     symbol=symbol,
                     action=decision_action,
                     position_size=adjust_size,  # 减仓比例
@@ -1853,10 +1991,28 @@ class TradingEngine:
                     stop_loss=adjustment.get('stop_loss_price'),
                     take_profit=adjustment.get('take_profit_price'),
                     confidence=adjustment.get('confidence', 0.7),
-                    reasoning=adjustment.get('reason', 'AI建议减仓'),
+                    reasoning=reason,
                     signals=[],
                     risk_assessment={'passed': True}  # 减仓操作必须执行，跳过风险检查
                 )
+                
+                # 如果是AI建议，标记为DeepSeek决策
+                if is_ai_recommendation:
+                    decision._is_deepseek_decision = True
+                    # 添加AI分析信号
+                    ai_analysis = adjustment.get('analysis', {})
+                    if ai_analysis:
+                        decision.signals = [{
+                            'source': 'ai',
+                            'data': {
+                                'analysis': ai_analysis,
+                                'direction': 'reduce',
+                                'recommendation': ai_analysis.get('recommendation', '减仓')
+                            }
+                        }]
+                    self.logger.info(f"✅ [AI审计仓位] {symbol}: 标记为DeepSeek决策，将跳过常规检查")
+                
+                return decision
             
             return None
             
@@ -1866,7 +2022,7 @@ class TradingEngine:
     
     async def _create_close_decision(self, symbol: str, position: Dict[str, Any],
                                     reason: str, market_data: Dict[str, Any],
-                                    trigger_price: float) -> Optional[Any]:
+                                    trigger_price: float, adjustment: Optional[Dict[str, Any]] = None) -> Optional[Any]:
         """
         创建平仓决策（止损/止盈）
         
@@ -1926,7 +2082,15 @@ class TradingEngine:
             else:
                 decision_action = 'close_short'
             
-            return TradingDecision(
+            # 检查是否为AI建议（来自DeepSeek审计仓位）
+            is_ai_recommendation = False
+            if adjustment:
+                is_ai_recommendation = 'AI建议' in reason or adjustment.get('analysis', {})
+            elif 'AI建议' in reason:
+                is_ai_recommendation = True
+            
+            # 创建决策
+            decision = TradingDecision(
                 symbol=symbol,
                 action=decision_action,
                 position_size=1.0,  # 全部平仓
@@ -1934,11 +2098,28 @@ class TradingEngine:
                 price=trigger_price,
                 stop_loss=None,
                 take_profit=None,
-                confidence=0.9,  # 止损止盈触发时，信心度很高
-                reasoning=f'{reason}触发：触发价格{trigger_price:.2f}',
+                confidence=0.9 if not adjustment else adjustment.get('confidence', 0.9),
+                reasoning=f'{reason}触发：触发价格{trigger_price:.2f}' if not is_ai_recommendation else reason,
                 signals=[],
                 risk_assessment={'passed': True}  # 止损/止盈必须执行，跳过风险检查
             )
+            
+            # 如果是AI建议，标记为DeepSeek决策
+            if is_ai_recommendation:
+                decision._is_deepseek_decision = True
+                # 添加AI分析信号
+                if adjustment and adjustment.get('analysis'):
+                    decision.signals = [{
+                        'source': 'ai',
+                        'data': {
+                            'analysis': adjustment.get('analysis', {}),
+                            'direction': 'close',
+                            'recommendation': adjustment.get('analysis', {}).get('recommendation', '平仓')
+                        }
+                    }]
+                self.logger.info(f"✅ [AI审计仓位] {symbol}: 标记为DeepSeek决策，将跳过常规检查")
+            
+            return decision
             
         except Exception as e:
             self.logger.error(f"创建平仓决策失败 {symbol}: {e}")
@@ -2259,12 +2440,13 @@ class TradingEngine:
     
     async def _ai_position_review_loop(self):
         """
-        AI持仓审查循环：每分钟检查一次持仓，如果AI分析建议平仓，立即执行平仓
+        AI持仓审查循环：每分钟检查一次持仓，如果AI分析建议平仓（包括快速获利），立即执行平仓
+        目的：快速获利，让AI在盈利时也能及时建议平仓以锁定利润
         """
         if not self.ai_review_enabled:
             return
         
-        self.logger.info(f"🤖 [AI持仓审查] 任务启动，每分钟检查一次持仓，AI建议平仓时立即执行")
+        self.logger.info(f"🤖 [AI持仓审查] 任务启动，每分钟检查一次持仓，AI建议平仓（包括快速获利）时立即执行")
         
         try:
             while self.is_running:
@@ -2291,23 +2473,33 @@ class TradingEngine:
                         self.logger.debug("[AI持仓审查] 当前无持仓，跳过本次检查")
                     else:
                         # 提取有持仓的交易对
-                        symbols = [pos.get('instId', '') for pos in positions_list if pos.get('instId')]
-                        symbols = [s for s in symbols if s]
+                        symbols_with_positions = []
+                        for pos in positions_list:
+                            if pos.get('instId'):
+                                pos_str = pos.get('pos', '0')
+                                position_size = abs(float(pos_str)) if pos_str else 0
+                                if position_size > 0:
+                                    symbols_with_positions.append(pos.get('instId'))
                         
-                        if symbols:
+                        if symbols_with_positions:
+                            self.logger.info(
+                                f"🔍 [AI持仓审查] 开始检查 {len(symbols_with_positions)} 个持仓: {', '.join(symbols_with_positions)}"
+                            )
+                            
                             # 获取市场数据
-                            market_data = await self._collect_market_data(symbols)
+                            market_data = await self._collect_market_data(symbols_with_positions)
                             if market_data:
                                 self._update_market_data_cache(market_data)
                                 
-                                # 执行AI持仓分析和调整（如果AI建议平仓，立即执行）
+                                # ⚡ 执行AI持仓分析和调整（如果AI建议平仓，立即执行）
+                                # 不限制调整次数，确保平仓能立即执行，包括快速获利的情况
                                 await self._check_position_adjustments(
                                     market_data,
-                                    enable_ai_analysis=True,  # 启用AI分析
+                                    enable_ai_analysis=True,  # 启用AI分析，让AI判断是否应该平仓获利
                                     max_adjustments=None,  # 不限制调整次数，确保平仓能立即执行
-                                    source="ai_review_minute"
+                                    source="ai_review_minute_快速获利"  # 标记为快速获利审查
                                 )
-                                self.logger.info(f"✅ [AI持仓审查] 完成本次检查，已分析 {len(symbols)} 个持仓")
+                                self.logger.info(f"✅ [AI持仓审查] 完成本次检查，已分析 {len(symbols_with_positions)} 个持仓")
                             else:
                                 self.logger.warning("[AI持仓审查] 市场数据为空，跳过本次检查")
                         else:
@@ -2316,9 +2508,11 @@ class TradingEngine:
                 except Exception as loop_err:
                     self.logger.error(f"❌ [AI持仓审查] 执行失败: {loop_err}", exc_info=True)
                 
-                # 计算本次循环耗时，确保每分钟执行一次
+                # 计算本次循环耗时，确保每分钟执行一次（精确控制）
                 elapsed = (datetime.now() - cycle_start).total_seconds()
-                sleep_time = max(60 - elapsed, 1)  # 确保间隔为60秒（1分钟）
+                sleep_time = max(60.0 - elapsed, 1.0)  # 确保间隔为60秒（1分钟），最少1秒
+                if elapsed < 60:
+                    self.logger.debug(f"⏰ [AI持仓审查] 本次检查耗时{elapsed:.2f}秒，等待{sleep_time:.2f}秒后执行下一次检查")
                 await asyncio.sleep(sleep_time)
         
         except asyncio.CancelledError:

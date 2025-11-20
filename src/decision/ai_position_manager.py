@@ -380,6 +380,24 @@ class AIPositionManager:
                     'analysis': analysis_payload
                 }
             
+            # ⚠️ 优先处理AI建议平仓（来自DeepSeek的分析）
+            # 如果AI建议平仓，应该优先于快速止损止盈（除非是紧急止损）
+            if enable_ai and action == 'close':
+                # AI建议平仓优先级最高（除非是紧急止损）
+                # 如果盈亏在-2%到2%之间，AI建议平仓应该执行
+                if -2.0 <= profit_pct <= 2.0:
+                    return {
+                        'action': 'close',
+                        'reason': reason,
+                        'adjust_size': 1.0,
+                        'confidence': confidence,
+                        'profit_pct': profit_pct,
+                        'analysis': analysis_payload,
+                        'ai_recommended': True  # 标记为AI推荐
+                    }
+                # 如果盈亏超过±2%，快速止损止盈优先，但保留AI分析信息
+                # 这种情况下快速止损止盈已经在上面的逻辑中处理了
+            
             # 如果AI建议调整仓位且未触发止损止盈
             if enable_ai and action in ['add', 'reduce']:
                 return {
@@ -390,16 +408,20 @@ class AIPositionManager:
                     'profit_pct': profit_pct,
                     'stop_loss_price': stop_loss_price,
                     'take_profit_price': take_profit_price,
-                    'analysis': analysis_payload
+                    'analysis': analysis_payload,
+                    'ai_recommended': True  # 标记为AI推荐
                 }
             elif enable_ai and action == 'close':
+                # 如果AI建议平仓但盈亏超过±2%，快速止损止盈已处理，这里不再重复
+                # 但如果快速止损止盈没有触发，返回AI建议
                 return {
                     'action': 'close',
                     'reason': reason,
                     'adjust_size': 1.0,
                     'confidence': confidence,
                     'profit_pct': profit_pct,
-                    'analysis': analysis_payload
+                    'analysis': analysis_payload,
+                    'ai_recommended': True  # 标记为AI推荐
                 }
             
             return None
