@@ -720,14 +720,26 @@ class DecisionEngine:
                     f"{symbol}: DeepSeek决策降级({fallback_reason})，启用多因子与趋势策略继续评估"
                 )
             
-            # 如果多时间周期分析给出观望/观察且信心度不足，直接放弃交易
+            # 如果多时间周期分析给出观望/观察且信心度不足，检查是否需要平仓
             if entry_timing == 'hold' and mtf_confidence < 0.45:
+                # 如果有持仓，需要平仓
+                if current_position and current_position.get('size', 0) > 0:
+                    self.logger.info(
+                        f"{symbol}: 多时间周期分析建议观望且信心度偏低({mtf_confidence:.2f})，但有持仓，准备平仓"
+                    )
+                    return self._build_close_decision(symbol, current_position, {}, reason='多周期建议观望')
                 self.logger.info(
                     f"{symbol}: 多时间周期分析建议观望且信心度偏低({mtf_confidence:.2f})，保持观望"
                 )
                 return None
             
             if entry_timing == 'watch' and mtf_confidence < 0.5:
+                # 如果有持仓，需要平仓
+                if current_position and current_position.get('size', 0) > 0:
+                    self.logger.info(
+                        f"{symbol}: 多时间周期分析建议观察且信心度不足({mtf_confidence:.2f})，但有持仓，准备平仓"
+                    )
+                    return self._build_close_decision(symbol, current_position, {}, reason='多周期建议观察')
                 self.logger.info(
                     f"{symbol}: 多时间周期分析建议观察且信心度不足({mtf_confidence:.2f})，保持观望"
                 )
@@ -736,6 +748,10 @@ class DecisionEngine:
             # 2. 融合信号
             combined_signal = self.signal_generator.combine_signals(signals)
             if not combined_signal or combined_signal.type == 'hold':
+                # 如果信号为hold但有持仓，需要平仓
+                if current_position and current_position.get('size', 0) > 0:
+                    self.logger.info(f"{symbol}: 融合信号为hold，但有持仓，准备平仓")
+                    return self._build_close_decision(symbol, current_position, {}, reason='信号为hold')
                 self.logger.info(f"{symbol}: 融合信号不足或为hold，保持观望")
                 return None
             
@@ -751,6 +767,10 @@ class DecisionEngine:
             # 判断交易动作和方向
             signal_type = combined_signal.type
             if signal_type == 'hold':
+                # 如果信号为hold但有持仓，需要平仓
+                if current_position and current_position.get('size', 0) > 0:
+                    self.logger.info(f"{symbol}: 综合信号为hold，但有持仓，准备平仓")
+                    return self._build_close_decision(symbol, current_position, {}, reason='信号为hold')
                 self.logger.info(f"{symbol}: 综合信号为hold，保持观望")
                 return None
             
