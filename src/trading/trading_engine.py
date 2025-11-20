@@ -20,6 +20,7 @@ from ..risk.risk_manager import RiskManager
 from ..risk.position_controller import PositionController
 from ..trading.position_manager import PositionManager
 from ..monitoring.profit_statistics import ProfitStatistics
+from ..monitoring.win_profit_tracker import WinProfitTracker
 from ..data.okx_client import get_okx_client
 from ..core.exception import TradingSystemException
 
@@ -67,6 +68,7 @@ class TradingEngine:
         from ..learning.trade_result_recorder import TradeResultRecorder
         from ..learning.prompt_optimizer import PromptOptimizer
         self.result_recorder = TradeResultRecorder()
+        self.win_profit_tracker = WinProfitTracker(recorder=self.result_recorder)
         self.prompt_optimizer = PromptOptimizer()
         self.strategy_guidelines: List[Dict[str, Any]] = []
         self._active_emphasis_factors: List[str] = []
@@ -2387,6 +2389,7 @@ class TradingEngine:
                     )
                     self.trade_count_since_optimization += 1
                     self._schedule_prompt_optimization()
+                    self._log_win_profit_summary(symbol)
                 except Exception as err:
                     self.logger.error(f"写入交易结果失败 {symbol}: {err}")
             
@@ -2397,6 +2400,17 @@ class TradingEngine:
         
         except Exception as e:
             self.logger.error(f"计算交易收益失败: {e}")
+    
+    def _log_win_profit_summary(self, symbol: Optional[str] = None):
+        """记录最新的胜率与盈利统计"""
+        if not getattr(self, "win_profit_tracker", None):
+            return
+        try:
+            summary = self.win_profit_tracker.compute_summary()
+            tag = symbol or ""
+            self.win_profit_tracker.log_summary(summary, tag=tag)
+        except Exception as err:
+            self.logger.debug(f"更新胜率统计失败: {err}")
     
     async def _cancel_all_orders(self):
         """取消所有未完成订单"""
