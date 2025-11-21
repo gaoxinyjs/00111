@@ -506,8 +506,11 @@ class DecisionEngine:
                     return None
                 
                 # 风险评估（放宽要求，但保留基本安全检查）
+                # 传递DeepSeek决策信息，以便风险评估器可以放宽限制
                 risk_assessment = self.risk_evaluator.evaluate_risk(
-                    symbol, temp_signal, position_size, market_data, current_position
+                    symbol, temp_signal, position_size, market_data, current_position,
+                    is_deepseek_decision=True,
+                    deepseek_confidence=deepseek_confidence_value
                 )
                 
                 # 如果风险评估未通过则拒绝执行

@@ -29,7 +29,9 @@ class RiskEvaluator:
     
     def evaluate_risk(self, symbol: str, signal: Signal, position_size: float,
                       market_data: Dict[str, Any],
-                      current_position: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                      current_position: Optional[Dict[str, Any]] = None,
+                      is_deepseek_decision: bool = False,
+                      deepseek_confidence: float = 0.0) -> Dict[str, Any]:
         """
         评估交易风险
         
@@ -39,6 +41,8 @@ class RiskEvaluator:
             position_size: 仓位大小
             market_data: 市场数据
             current_position: 当前持仓信息
+            is_deepseek_decision: 是否为DeepSeek决策（默认False）
+            deepseek_confidence: DeepSeek信心度（默认0.0）
             
         Returns:
             风险评估结果
@@ -214,15 +218,38 @@ class RiskEvaluator:
                 # 没有额外警告时仍需依据风险等级严格过滤
                 if risk_level in ['low', 'medium']:
                     risk_result['passed'] = True
-                elif risk_level == 'high' and position_size <= 0.02:
-                    risk_result['passed'] = True
-                    self.logger.info(
-                        f"{symbol}: [风险评估] 风险等级为high，但仓位较小({position_size:.2%})，谨慎放行"
-                    )
+                elif risk_level == 'high':
+                    # 对于high风险等级，根据情况决定是否放行
+                    # 1. 如果仓位较小（<=2%），放行
+                    # 2. 如果是DeepSeek高信心度决策（>=0.65），放宽到10%仓位
+                    if position_size <= 0.02:
+                        risk_result['passed'] = True
+                        self.logger.info(
+                            f"{symbol}: [风险评估] 风险等级为high，但仓位较小({position_size:.2%})，谨慎放行"
+                        )
+                    elif is_deepseek_decision and deepseek_confidence >= 0.65 and position_size <= 0.10:
+                        # DeepSeek高信心度决策，允许更大的仓位（最多10%）
+                        risk_result['passed'] = True
+                        self.logger.info(
+                            f"{symbol}: [风险评估] DeepSeek高信心度决策({deepseek_confidence:.2f})，"
+                            f"风险等级high但放宽限制，允许仓位{position_size:.2%}"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"{symbol}: [风险评估] 风险等级{risk_level}过高，拒绝交易（仓位={position_size:.2%}）"
+                        )
                 else:
-                    self.logger.warning(
-                        f"{symbol}: [风险评估] 风险等级{risk_level}过高，拒绝交易（仓位={position_size:.2%}）"
-                    )
+                    # very_high风险等级，除非是DeepSeek极高信心度，否则拒绝
+                    if is_deepseek_decision and deepseek_confidence >= 0.75 and position_size <= 0.08:
+                        risk_result['passed'] = True
+                        self.logger.info(
+                            f"{symbol}: [风险评估] DeepSeek极高信心度决策({deepseek_confidence:.2f})，"
+                            f"风险等级very_high但特殊放行，允许仓位{position_size:.2%}"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"{symbol}: [风险评估] 风险等级{risk_level}过高，拒绝交易（仓位={position_size:.2%}）"
+                        )
             
             return risk_result
         

@@ -35,6 +35,57 @@ trading_pairs:
       ai_no_direction: 0.45
       ai_low_confidence: 0.35
 
+  - symbol: "BTC-USDT-SWAP"
+    enabled: true
+    min_order_size: 0.0001
+    price_precision: 2
+    size_precision: 4
+    leverage: 3
+    max_position: 1.5
+    min_confidence: 0.6
+    position:
+      base: 0.03
+      max: 0.08
+      min: 0.005
+    fallback_multipliers:
+      ai_hold: 0.6
+      ai_no_direction: 0.5
+      ai_low_confidence: 0.4
+
+  - symbol: "XRP-USDT-SWAP"
+    enabled: true
+    min_order_size: 1.0
+    price_precision: 4
+    size_precision: 0
+    leverage: 5
+    max_position: 1.0
+    min_confidence: 0.6
+    position:
+      base: 0.05
+      max: 0.12
+      min: 0.01
+    fallback_multipliers:
+      ai_hold: 0.6
+      ai_no_direction: 0.5
+      ai_low_confidence: 0.4
+
+  - symbol: "DOGE-USDT-SWAP"
+    enabled: true
+    min_order_size: 10.0
+    price_precision: 5
+    size_precision: 0
+    leverage: 5
+    max_position: 1.0
+    min_confidence: 0.6
+    position:
+      base: 0.05
+      max: 0.12
+      min: 0.01
+    fallback_multipliers:
+      ai_hold: 0.6
+      ai_no_direction: 0.5
+      ai_low_confidence: 0.4
+
 # Top-N 交易筛选（每次仅分析指定币种并挑选最强信号）
 top_selection:
   enabled: true
@@ -45,9 +96,13 @@ top_selection:
     - "BTC-USDT-SWAP"
     - "XRP-USDT-SWAP"
     - "DOGE-USDT-SWAP"
-  interval: 900            # DeepSeek 分析间隔（秒），默认 15 分钟
+  interval: 900            # DeepSeek 分析间隔（秒）。常用值：300(5分钟)、600(10分钟)、900(15分钟)、1800(30分钟)、3600(60分钟)
   max_candidates: 5        # 每轮最多纳入的候选币种数量
   priority_confidence: 0.65  # DeepSeek 信心度阈值；高于此值优先直接执行
+  allow_multiple_trades: true  # 允许同时交易多个高信心度币种（如果都满足阈值）
+  max_concurrent_trades: 3  # 最多同时交易的币种数量（用于风险控制）
+  min_confidence_gap: 0.02  # 多个币种同时交易时，最低信心度差距（避免选择过于接近的币种）
+  align_to_interval: false  # 时间对齐模式：true=整点15分钟运行（00/15/30/45分），false=间隔15分钟运行（从启动时间开始）
 
 # DeepSeek 持仓复查：有持仓时每分钟复查一次是否需要平仓
 deepseek_position_review:

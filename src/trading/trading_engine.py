@@ -7,7 +7,7 @@
 import asyncio
 from copy import deepcopy
 from typing import Dict, List, Optional, Any, Set
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
 from ..data.data_collector import DataCollector
@@ -96,9 +96,9 @@ class TradingEngine:
         # 跟踪已开仓的交易记录信息，用于平仓写入结果
         self.active_trade_records: Dict[str, Dict[str, Any]] = {}
         
-        # 15分钟超时配置（秒）
-        self.force_close_timeout = 15 * 60  # 15分钟 = 900秒（强制平仓）
-        self.pending_order_timeout = 15 * 60  # 15分钟 = 900秒（挂单超时）
+        # 超时配置（秒）- 将在初始化Top Selection配置后设置
+        self.force_close_timeout = None  # 强制平仓超时（将在后面从配置读取）
+        self.pending_order_timeout = None  # 挂单超时（将在后面从配置读取）
         
         # 从配置读取是否启用自动交易
         auto_trading_config = self.config_mgr.get_config('trading', 'auto_trading', {})
@@ -137,7 +137,31 @@ class TradingEngine:
             self.top_selection_priority_confidence = float(self.top_selection_cfg.get('priority_confidence', 0.65))
         except (TypeError, ValueError):
             self.top_selection_priority_confidence = 0.65
+        try:
+            self.top_selection_allow_multiple = bool(self.top_selection_cfg.get('allow_multiple_trades', True))
+        except (TypeError, ValueError):
+            self.top_selection_allow_multiple = True
+        try:
+            self.top_selection_max_concurrent = max(int(self.top_selection_cfg.get('max_concurrent_trades', 3)), 1)
+        except (TypeError, ValueError):
+            self.top_selection_max_concurrent = 3
+        try:
+            self.top_selection_min_gap = float(self.top_selection_cfg.get('min_confidence_gap', 0.02))
+        except (TypeError, ValueError):
+            self.top_selection_min_gap = 0.02
+        try:
+            self.top_selection_align_to_interval = bool(self.top_selection_cfg.get('align_to_interval', True))
+        except (TypeError, ValueError):
+            self.top_selection_align_to_interval = True
         self.top_selection_last_run: Optional[datetime] = None
+        self.top_selection_start_time: Optional[datetime] = None  # 用于间隔模式，记录启动时间
+        
+        # 使用配置的间隔时间作为超时时间（如果未单独配置）
+        # 强制平仓和挂单超时使用与执行间隔相同的时间
+        if self.force_close_timeout is None:
+            self.force_close_timeout = self.top_selection_interval
+        if self.pending_order_timeout is None:
+            self.pending_order_timeout = self.top_selection_interval
 
         # DeepSeek持仓复查配置
         review_cfg = self.config_mgr.get_config('trading', 'deepseek_position_review', {}) or {}
@@ -246,20 +270,246 @@ class TradingEngine:
             symbol = decision.symbol
             if allowed and symbol not in allowed:
                 skipped_symbols.append(symbol)
+                self.logger.debug(
+                    f"[TopSelection] {symbol}: 不在允许的候选币种列表中，跳过"
+                )
                 continue
             score = ai_confidence_map.get(symbol, getattr(decision, 'confidence', 0.0) or 0.0)
-            if getattr(decision, '_is_deepseek_decision', False) and score >= threshold:
+            is_deepseek = getattr(decision, '_is_deepseek_decision', False)
+            if is_deepseek and score >= threshold:
                 priority_candidates.append((score, decision))
+                self.logger.debug(
+                    f"[TopSelection] {symbol}: DeepSeek决策，信心度{score:.2f} >= {threshold:.2f}，加入优先候选"
+                )
             else:
                 fallback_candidates.append((score, decision))
+                if is_deepseek:
+                    self.logger.debug(
+                        f"[TopSelection] {symbol}: DeepSeek决策，但信心度{score:.2f} < {threshold:.2f}，加入降级候选"
+                    )
+                else:
+                    self.logger.debug(
+                        f"[TopSelection] {symbol}: 非DeepSeek决策，信心度{score:.2f}，加入降级候选"
+                    )
 
+        def get_sort_key(item):
+                """
+                计算排序键，用于对候选决策进行排序
+                排序优先级：
+                1. DeepSeek信心度（主要）
+                2. 多因子综合评分/信号强度（次要）
+                3. 趋势强度（第三优先级）
+                4. 仓位大小（第四优先级，更大的仓位可能表示更强的信号）
+                5. 字母顺序（最后的tie-breaker，确保结果可重复）
+                """
+                score, decision = item
+                # 1. 信心度（主要）
+                confidence = score
+                
+                # 2. 多因子评分/信号强度（从signals中提取）
+                signal_strength = 0.0
+                entry_timing_score = 0.0
+                if decision.signals:
+                    for sig in decision.signals:
+                        if isinstance(sig, dict):
+                            sig_strength = sig.get('strength', 0.0) or sig.get('score', 0.0)
+                            signal_strength = max(signal_strength, float(sig_strength) if sig_strength else 0.0)
+                            
+                            # 从多时间周期分析中提取趋势强度和入场时机评分
+                            data = sig.get('data', {})
+                            if isinstance(data, dict):
+                                analysis = data.get('analysis', {})
+                                if isinstance(analysis, dict):
+                                    # 提取趋势强度
+                                    mtf_trend = analysis.get('trend_strength', 0.0) or analysis.get('confidence', 0.0)
+                                    if mtf_trend:
+                                        signal_strength = max(signal_strength, float(mtf_trend))
+                                    
+                                    # 提取入场时机评分
+                                    timing = analysis.get('entry_timing_score', 0.0)
+                                    if timing:
+                                        entry_timing_score = max(entry_timing_score, float(timing))
+                
+                # 3. 趋势强度（从risk_assessment中提取，或使用入场时机评分）
+                trend_strength = entry_timing_score
+                if decision.risk_assessment:
+                    risk_trend = decision.risk_assessment.get('trend_strength', 0.0)
+                    if risk_trend:
+                        trend_strength = max(trend_strength, float(risk_trend))
+                
+                # 4. 仓位大小
+                position_size = float(decision.position_size or 0.0)
+                
+                # 5. 字母顺序（反向，让字母顺序靠前的优先）
+                symbol_order = -ord(decision.symbol[0]) if decision.symbol else 0
+                
+                # 返回排序键（按优先级排序，使用负数实现降序）
+                return (
+                    confidence,  # 主要：信心度（降序）
+                    signal_strength,  # 次要：信号强度（降序）
+                    trend_strength,  # 第三：趋势强度（降序）
+                    position_size,  # 第四：仓位大小（降序）
+                    symbol_order  # 最后：字母顺序（升序，通过负数实现）
+                )
+        
         def pick_best(candidates: List[tuple]):
+            """
+            从候选决策中选择最佳的一个
+            """
             if not candidates:
                 return None, [], -1.0
-            best_score, best_decision = max(candidates, key=lambda item: item[0])
-            dropped_symbols = [dec.symbol for _, dec in candidates if dec is not best_decision]
+                score, decision = item
+                # 1. 信心度（主要）
+                confidence = score
+                
+                # 2. 多因子评分/信号强度（从signals中提取）
+                signal_strength = 0.0
+                entry_timing_score = 0.0
+                if decision.signals:
+                    for sig in decision.signals:
+                        if isinstance(sig, dict):
+                            sig_strength = sig.get('strength', 0.0) or sig.get('score', 0.0)
+                            signal_strength = max(signal_strength, float(sig_strength) if sig_strength else 0.0)
+                            
+                            # 从多时间周期分析中提取趋势强度和入场时机评分
+                            data = sig.get('data', {})
+                            if isinstance(data, dict):
+                                analysis = data.get('analysis', {})
+                                if isinstance(analysis, dict):
+                                    # 提取趋势强度
+                                    mtf_trend = analysis.get('trend_strength', 0.0) or analysis.get('confidence', 0.0)
+                                    if mtf_trend:
+                                        signal_strength = max(signal_strength, float(mtf_trend))
+                                    
+                                    # 提取入场时机评分
+                                    timing = analysis.get('entry_timing_score', 0.0)
+                                    if timing:
+                                        entry_timing_score = max(entry_timing_score, float(timing))
+                
+                # 3. 趋势强度（从risk_assessment中提取，或使用入场时机评分）
+                trend_strength = entry_timing_score
+                if decision.risk_assessment:
+                    risk_trend = decision.risk_assessment.get('trend_strength', 0.0)
+                    if risk_trend:
+                        trend_strength = max(trend_strength, float(risk_trend))
+                
+                # 4. 仓位大小
+                position_size = float(decision.position_size or 0.0)
+                
+                # 5. 字母顺序（反向，让字母顺序靠前的优先）
+                symbol_order = -ord(decision.symbol[0]) if decision.symbol else 0
+                
+                # 返回排序键（按优先级排序，使用负数实现降序）
+                return (
+                    confidence,  # 主要：信心度（降序）
+                    signal_strength,  # 次要：信号强度（降序）
+                    trend_strength,  # 第三：趋势强度（降序）
+                    position_size,  # 第四：仓位大小（降序）
+                    symbol_order  # 最后：字母顺序（升序，通过负数实现）
+                )
+            
+            # 按排序键排序，选择最佳
+            sorted_candidates = sorted(candidates, key=get_sort_key, reverse=True)
+            best_score, best_decision = sorted_candidates[0]
+            
+            # 记录所有被丢弃的候选
+            dropped_symbols = [dec.symbol for _, dec in sorted_candidates[1:]]
+            
+            # 如果有多个候选的信心度相同，记录详细信息
+            if len(sorted_candidates) > 1:
+                same_confidence = [dec.symbol for score, dec in sorted_candidates if abs(score - best_score) < 0.001]
+                if len(same_confidence) > 1:
+                    # 提取最佳决策的详细信息用于日志
+                    best_sig_strength = 0.0
+                    best_trend_strength = 0.0
+                    best_pos_size = float(best_decision.position_size or 0.0)
+                    if best_decision.signals:
+                        for sig in best_decision.signals:
+                            if isinstance(sig, dict):
+                                sig_strength = sig.get('strength', 0.0) or sig.get('score', 0.0)
+                                best_sig_strength = max(best_sig_strength, float(sig_strength) if sig_strength else 0.0)
+                    if best_decision.risk_assessment:
+                        best_trend_strength = float(best_decision.risk_assessment.get('trend_strength', 0.0) or 0.0)
+                    
+                    self.logger.info(
+                        f"[TopSelection] 多个币种信心度相同({best_score:.2f}): {', '.join(same_confidence)}，"
+                        f"按综合评分选择 {best_decision.symbol} "
+                        f"(信号强度={best_sig_strength:.2f}, 趋势强度={best_trend_strength:.2f}, 仓位={best_pos_size:.2%})"
+                    )
+            
             return best_decision, dropped_symbols, best_score
         
+        def pick_multiple(candidates: List[tuple], max_count: int = 3, min_gap: float = 0.02):
+            """
+            从候选决策中选择多个最佳决策（如果允许多币种同时交易）
+            选择策略：
+            1. 按综合评分排序
+            2. 选择前N个，但确保它们之间的信心度差距足够大（避免选择过于相似的币种）
+            3. 确保总仓位不超过限制
+            """
+            if not candidates or max_count <= 0:
+                return [], []
+            
+            # 按综合评分排序
+            sorted_candidates = sorted(candidates, key=get_sort_key, reverse=True)
+            
+            selected: List = []
+            selected_scores: List[float] = []
+            total_position = 0.0
+            max_total_position = 0.5  # 最多使用50%的总仓位用于多币种交易
+            
+            for score, decision in sorted_candidates:
+                if len(selected) >= max_count:
+                    break
+                
+                # 检查信心度差距：如果与已选择的币种信心度太接近，跳过
+                if selected_scores:
+                    min_existing_score = min(selected_scores)
+                    if abs(score - min_existing_score) < min_gap:
+                        continue
+                
+                # 检查总仓位限制
+                pos_size = float(decision.position_size or 0.0)
+                if total_position + pos_size > max_total_position:
+                    # 如果加上这个币种会超过限制，尝试减小仓位
+                    remaining = max_total_position - total_position
+                    if remaining < 0.01:  # 如果剩余仓位太小，跳过
+                        continue
+                    # 调整仓位大小
+                    decision.position_size = remaining
+                    pos_size = remaining
+                
+                selected.append(decision)
+                selected_scores.append(score)
+                total_position += pos_size
+            
+            dropped = [dec.symbol for score, dec in sorted_candidates if dec not in selected]
+            return selected, dropped
+        
+        # 根据配置决定是选择单个还是多个
+        if self.top_selection_allow_multiple and len(priority_candidates) > 1:
+            # 多币种模式：选择多个高信心度的币种
+            selected_decisions, priority_dropped = pick_multiple(
+                priority_candidates,
+                max_count=self.top_selection_max_concurrent,
+                min_gap=self.top_selection_min_gap
+            )
+            
+            if selected_decisions:
+                selected_symbols = [d.symbol for d in selected_decisions]
+                selected_scores = [ai_confidence_map.get(s, 0.0) for s in selected_symbols]
+                self.logger.info(
+                    f"[TopSelection] 多币种模式：同时执行 {len(selected_decisions)} 个币种 "
+                    f"({', '.join(selected_symbols)})，"
+                    f"信心度: {', '.join([f'{s:.2f}' for s in selected_scores])}"
+                )
+                if priority_dropped:
+                    self.logger.info(
+                        f"[TopSelection] 其余候选丢弃: {', '.join(sorted(set(priority_dropped)))}"
+                    )
+                return closing_decisions + selected_decisions
+        
+        # 单币种模式：只选择最佳的一个
         priority_decision, priority_dropped, priority_score = pick_best(priority_candidates)
         if priority_decision:
             if priority_dropped:
@@ -273,6 +523,24 @@ class TradingEngine:
                     f"(信心度 {priority_score:.2f})"
                 )
             return closing_decisions + [priority_decision]
+        
+        # 降级处理：如果高信心度候选都没有，尝试fallback
+        if self.top_selection_allow_multiple and len(fallback_candidates) > 1:
+            selected_decisions, fallback_dropped = pick_multiple(
+                fallback_candidates,
+                max_count=self.top_selection_max_concurrent,
+                min_gap=self.top_selection_min_gap
+            )
+            if selected_decisions:
+                selected_symbols = [d.symbol for d in selected_decisions]
+                selected_scores = [ai_confidence_map.get(s, 0.0) for s in selected_symbols]
+                self.logger.info(
+                    f"[TopSelection] 降级多币种模式：同时执行 {len(selected_decisions)} 个币种 "
+                    f"({', '.join(selected_symbols)})，"
+                    f"信心度: {', '.join([f'{s:.2f}' for s in selected_scores])} "
+                    f"(低于阈值{threshold:.2f})"
+                )
+                return closing_decisions + selected_decisions
         
         fallback_decision, fallback_dropped, fallback_score = pick_best(fallback_candidates)
         if fallback_decision:
@@ -297,7 +565,7 @@ class TradingEngine:
         return closing_decisions
 
     def _seconds_until_next_interval(self, interval_seconds: int) -> float:
-        """计算距离下一个整数间隔的秒数（按UTC时间对齐，每15分钟整点）"""
+        """计算距离下一个整数间隔的秒数（按UTC时间对齐到配置的间隔整点）"""
         if interval_seconds <= 0:
             return 0.0
         now = datetime.utcnow()
@@ -306,13 +574,73 @@ class TradingEngine:
         delay = max(0.0, next_ts - now_ts)
         return delay
 
-    async def _sleep_until_next_aligned_window(self, interval_seconds: int, context: str = ""):
-        """等待到下一个指定间隔的整点（例如 00/15/30/45 分），确保开仓时间对齐"""
-        delay = self._seconds_until_next_interval(interval_seconds)
+    def _seconds_until_next_interval_from_start(self, interval_seconds: int, start_time: datetime, is_first_run: bool = False) -> float:
+        """
+        计算距离下一个间隔的秒数（从启动时间开始计算，间隔模式）
+        
+        Args:
+            interval_seconds: 间隔秒数
+            start_time: 启动时间
+            is_first_run: 是否是第一次运行（启动时），如果是则立即执行，返回0
+        """
+        if interval_seconds <= 0:
+            return 0.0
+        
+        # 如果是第一次运行（启动时），立即执行，不等待
+        if is_first_run:
+            return 0.0
+        
+        now = datetime.utcnow()
+        elapsed = (now - start_time).total_seconds()
+        # 计算已经过了多少个间隔
+        intervals_passed = int(elapsed // interval_seconds)
+        # 下一个间隔的时间点
+        next_interval_time = start_time + timedelta(seconds=(intervals_passed + 1) * interval_seconds)
+        delay = (next_interval_time - now).total_seconds()
+        return max(0.0, delay)
+    
+    async def _sleep_until_next_aligned_window(self, interval_seconds: int, context: str = "", is_first_run: bool = False):
+        """
+        等待到下一个执行时间点
+        根据配置选择：
+        - 整点模式：对齐到配置间隔的整点（例如15分钟间隔对齐到00/15/30/45分）
+        - 间隔模式：从启动时间开始，按配置的间隔运行
+        - 如果是第一次运行（启动时），间隔模式会立即执行，不等待
+        
+        Args:
+            interval_seconds: 间隔秒数
+            context: 上下文描述（用于日志）
+            is_first_run: 是否是第一次运行（启动时）
+        """
+        if self.top_selection_align_to_interval:
+            # 整点模式：对齐到配置间隔的整点
+            delay = self._seconds_until_next_interval(interval_seconds)
+            mode_desc = "整点"
+        else:
+            # 间隔模式：从启动时间开始计算
+            if self.top_selection_start_time is None:
+                # 如果还没有记录启动时间，使用当前时间作为启动时间
+                self.top_selection_start_time = datetime.utcnow()
+            delay = self._seconds_until_next_interval_from_start(
+                interval_seconds, 
+                self.top_selection_start_time, 
+                is_first_run=is_first_run
+            )
+            mode_desc = "间隔"
+        
         if delay <= 1:
+            if is_first_run and not self.top_selection_align_to_interval:
+                self.logger.info(
+                    f"[TopSelection]{context} [间隔模式] 启动时立即执行第一次，"
+                    f"之后每 {interval_seconds//60} 分钟执行一次"
+                )
             return
+        
         tag = f"[TopSelection]{context}" if context else "[TopSelection]"
-        self.logger.info(f"{tag} 距离下一个{interval_seconds//60}分钟整窗口还有 {delay:.0f} 秒，等待对齐...")
+        self.logger.info(
+            f"{tag} [{mode_desc}模式] 距离下一次执行还有 {delay:.0f} 秒 "
+            f"({interval_seconds//60}分钟间隔)"
+        )
         await asyncio.sleep(delay)
     
     async def start(self):
@@ -413,12 +741,30 @@ class TradingEngine:
             )
             signal_interval = self.top_selection_interval
         
+        # 记录启动时间（用于间隔模式）
+        if self.top_selection_enabled and not self.top_selection_align_to_interval:
+            self.top_selection_start_time = datetime.utcnow()
+            self.logger.info(
+                f"[TopSelection] 间隔模式：从启动时间 {self.top_selection_start_time.strftime('%H:%M:%S')} 开始，"
+                f"每 {self.top_selection_interval//60} 分钟执行一次"
+            )
+        elif self.top_selection_enabled:
+            interval_minutes = self.top_selection_interval // 60
+            # 计算整点对齐的分钟数（例如15分钟间隔对齐到00/15/30/45分）
+            aligned_minutes = [i * interval_minutes for i in range(60 // interval_minutes)]
+            aligned_str = '/'.join([f'{m:02d}' for m in aligned_minutes])
+            self.logger.info(
+                f"[TopSelection] 整点模式：对齐到{interval_minutes}分钟整点（{aligned_str}分），"
+                f"每 {interval_minutes} 分钟执行一次"
+            )
+        
         self.logger.info(f"主交易循环启动，信号生成间隔: {signal_interval}秒")
         
         if self.top_selection_enabled:
             await self._sleep_until_next_aligned_window(
                 self.top_selection_interval,
-                context=" 初始化"
+                context=" 初始化",
+                is_first_run=True  # 启动时立即执行第一次
             )
         
         while self.is_running:
@@ -473,17 +819,31 @@ class TradingEngine:
                     set(selection_symbols[:self.top_selection_max_candidates])
                     if self.top_selection_enabled else None
                 )
+                if allowed_symbols:
+                    self.logger.info(
+                        f"[TopSelection] 允许生成决策的币种: {', '.join(sorted(allowed_symbols))}"
+                    )
                 decisions = await self._make_decisions(
                     market_data,
                     filtered_signals,
                     allowed_symbols=allowed_symbols,
                     positions_snapshot=positions_snapshot
                 )
+                if decisions:
+                    decision_symbols = [d.symbol for d in decisions]
+                    self.logger.info(
+                        f"[TopSelection] 生成的决策币种: {', '.join(sorted(set(decision_symbols)))}"
+                    )
                 decisions = self._filter_decisions_by_top_strategy(
                     decisions,
                     ai_confidence_map,
                     allowed_symbols
                 )
+                if decisions:
+                    final_symbols = [d.symbol for d in decisions]
+                    self.logger.info(
+                        f"[TopSelection] 过滤后的决策币种: {', '.join(sorted(set(final_symbols)))}"
+                    )
                 if self.top_selection_enabled:
                     self.top_selection_last_run = datetime.now()
                 
