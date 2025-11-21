@@ -96,7 +96,11 @@ top_selection:
     - "BTC-USDT-SWAP"
     - "XRP-USDT-SWAP"
     - "DOGE-USDT-SWAP"
-  interval: 900            # DeepSeek 分析间隔（秒）。常用值：300(5分钟)、600(10分钟)、900(15分钟)、1800(30分钟)、3600(60分钟)
+    interval: 900            # DeepSeek 分析间隔（秒）。常用值：300(5分钟)、600(10分钟)、900(15分钟)、1800(30分钟)、3600(60分钟)
+    schedule:
+      mode: "aligned"        # aligned=整点模式(例如每15分钟的00/15/30/45分)，interval=自定义秒级间隔
+      interval_seconds: 900  # 当 mode=interval 时，使用该秒数循环评估；默认为 interval
+    single_winner: true      # 是否每轮只挑出信心度最高的一个币对直接开仓
   max_candidates: 5        # 每轮最多纳入的候选币种数量
   priority_confidence: 0.65  # DeepSeek 信心度阈值；高于此值优先直接执行
   allow_multiple_trades: true  # 允许同时交易多个高信心度币种（如果都满足阈值）
