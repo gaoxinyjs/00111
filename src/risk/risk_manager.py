@@ -64,7 +64,7 @@ class RiskManager:
             max_loss_per_trade = self.config_mgr.get_config('risk', 'risk_limits.max_loss_per_trade')
             account_loss_pct = get_symbol_account_loss_pct(symbol, self.config_mgr)
             if account_loss_pct <= 0:
-                account_loss_pct = self.config_mgr.get_config('risk', 'stop_loss.default_stop_loss_pct', 0.002)
+                account_loss_pct = self.config_mgr.get_config('risk', 'stop_loss.account_stop_loss_pct', 0.015)
             estimated_loss = position_size * account_loss_pct
             
             if estimated_loss > max_loss_per_trade:

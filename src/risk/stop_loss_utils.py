@@ -84,6 +84,10 @@ def get_symbol_account_loss_pct(symbol: str, config_mgr=None) -> float:
     返回在基础止损触发时，账户层面预计的亏损比例（价格止损 * 杠杆）
     """
     mgr = config_mgr or get_config_manager()
+    stop_loss_cfg = _get_stop_loss_config(mgr)
+    account_stop_pct = stop_loss_cfg.get('account_stop_loss_pct')
+    if account_stop_pct:
+        return float(account_stop_pct)
     price_pct = get_symbol_price_stop_pct(symbol, mgr)
     leverage = get_symbol_leverage(symbol, mgr)
     return price_pct * leverage
