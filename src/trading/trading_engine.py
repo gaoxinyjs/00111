@@ -1028,6 +1028,7 @@ class TradingEngine:
         for decision in decisions:
             try:
                 symbol = decision.symbol
+                is_closing_action = self._is_closing_position(symbol, decision.action)
                 
                 # 检查是否为DeepSeek决策（必须严格执行）
                 # 优先检查decision对象上的标记
@@ -1066,20 +1067,23 @@ class TradingEngine:
                         )
                         continue
                     
-                    # 检查仓位大小
-                    if decision.position_size < self.min_position_size:
+                    # 检查仓位大小（仅针对开仓/增仓）
+                    if (not is_closing_action) and (decision.position_size < self.min_position_size):
                         self.logger.info(
                             f"{symbol}: 仓位大小{decision.position_size:.2%}低于阈值{self.min_position_size:.2%}，跳过执行"
                         )
                         continue
                     
-                    # 风险检查
-                    position_size = decision.position_size
-                    market_data = {'price': decision.price or 0, 'volatility': 0.25}
-                    
-                    if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data):
-                        self.logger.warning(f"{symbol}: 风险检查未通过，拒绝交易")
-                        continue
+                    # 风险检查（平仓操作应始终允许，跳过风险拦截）
+                    if not is_closing_action:
+                        position_size = decision.position_size
+                        market_data = {'price': decision.price or 0, 'volatility': 0.25}
+                        
+                        if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data):
+                            self.logger.warning(f"{symbol}: 风险检查未通过，拒绝交易")
+                            continue
+                    else:
+                        self.logger.debug(f"{symbol}: 平仓操作，跳过风险评估拦截")
                 
                 # 记录准备执行的决策
                 action_desc = {
@@ -1115,7 +1119,7 @@ class TradingEngine:
                 ai_analysis = getattr(decision, 'ai_analysis', None) or {}
                 
                 # 🔍 检查是否有待成交的委托订单，避免重复创建（只检查开仓订单）
-                if not self._is_closing_position(symbol, decision.action):
+                if not is_closing_action:
                     existing_pending = self.pending_orders.get(symbol)
                     if existing_pending:
                         existing_order = existing_pending.get('order')
@@ -1155,7 +1159,7 @@ class TradingEngine:
                                 del self.pending_orders[symbol]
                 
                 # 记录交易决策（开仓时）
-                if not self._is_closing_position(symbol, decision.action):
+                if not is_closing_action:
                     strategy_context = self._build_strategy_context(decision, ai_analysis, symbol_market_data)
                     session_tag = self._derive_session_tag()
                     volatility_regime = self._derive_volatility_regime(symbol_market_data)
@@ -1221,7 +1225,7 @@ class TradingEngine:
                         )
                         
                         # 记录开仓时间（如果是开仓订单）
-                        if not self._is_closing_position(symbol, decision.action):
+                        if not is_closing_action:
                             self.position_entry_times[symbol] = {
                                 'entry_time': fill_time,
                                 'position_side': decision.position_side,
@@ -1256,7 +1260,7 @@ class TradingEngine:
                                 )
                         
                         # 计算收益（如果是平仓）
-                        if self._is_closing_position(symbol, decision.action):
+                        if is_closing_action:
                             trade_info = self.active_trade_records.pop(symbol, None) or {}
                             trade_info.update({
                                 'exit_price': fill_price,
@@ -1455,17 +1459,35 @@ class TradingEngine:
                             price_change_pct = ((entry_price - current_price) / entry_price) * 100
                         
                         # 获取杠杆倍数（用于计算账户盈亏）
-                        leverage = 1  # 默认1倍杠杆
-                        try:
-                            trading_config_pairs = self.config_mgr.get_config('trading', 'trading_pairs')
-                            for pair in trading_config_pairs:
-                                if pair.get('symbol') == symbol:
-                                    leverage = pair.get('leverage', 1)
-                                    leverage = int(leverage) if leverage else 1
-                                    break
-                        except Exception as e:
-                            self.logger.warning(f"获取杠杆倍数失败 {symbol}: {e}，使用默认值1")
+                        leverage = 1.0  # 默认1倍杠杆
+                        leverage_source = 'default'
                         
+                        # 1) 优先使用交易所实时返回的杠杆（与实际下单保持一致）
+                        exchange_leverage = pos_data.get('lever') or pos_data.get('leverage')
+                        if exchange_leverage is not None:
+                            try:
+                                leverage = max(1.0, float(exchange_leverage))
+                                leverage_source = 'exchange'
+                            except (ValueError, TypeError):
+                                self.logger.warning(
+                                    f"解析交易所杠杆失败 {symbol}: {exchange_leverage}，尝试使用配置"
+                                )
+                                leverage = 1.0
+                                leverage_source = 'default'
+                        
+                        # 2) 如果交易所未返回有效杠杆，则回退到配置文件
+                        if leverage_source == 'default':
+                            try:
+                                trading_config_pairs = self.config_mgr.get_config('trading', 'trading_pairs')
+                                for pair in trading_config_pairs:
+                                    if pair.get('symbol') == symbol:
+                                        config_leverage = pair.get('leverage', 1)
+                                        leverage = max(1.0, float(config_leverage)) if config_leverage else 1.0
+                                        leverage_source = 'config'
+                                        break
+                            except Exception as e:
+                                self.logger.warning(f"获取配置杠杆失败 {symbol}: {e}，使用默认值1")
+                            
                         # 计算账户盈亏百分比（考虑杠杆倍数）
                         # 账户盈亏 = 价格变动百分比 × 杠杆倍数
                         account_pnl_pct = price_change_pct * leverage
@@ -1475,7 +1497,7 @@ class TradingEngine:
                             f"🔍 [持仓检查] {symbol}: {position_side} | "
                             f"开仓价={entry_price:.5f}, 当前价={current_price:.5f}, "
                             f"价格变动={price_change_pct:.2f}% | "
-                            f"账户盈亏={account_pnl_pct:.2f}% (杠杆{leverage}x) | "
+                            f"账户盈亏={account_pnl_pct:.2f}% (杠杆{leverage}x, 来源={leverage_source}) | "
                             f"持仓量={position_size:.4f}"
                         )
                         
