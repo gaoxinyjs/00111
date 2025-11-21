@@ -35,6 +35,19 @@ trading_pairs:
       ai_no_direction: 0.45
       ai_low_confidence: 0.35
 
+# Top-N 交易筛选（每次仅分析指定币种并挑选最强信号）
+top_selection:
+  enabled: true
+  # 固定需要 DeepSeek 分析的币种列表（示例，可按需调整）
+  symbols:
+    - "SOL-USDT-SWAP"
+    - "ETH-USDT-SWAP"
+    - "BTC-USDT-SWAP"
+    - "XRP-USDT-SWAP"
+    - "DOGE-USDT-SWAP"
+  interval: 900            # DeepSeek 分析间隔（秒），默认 15 分钟
+  max_candidates: 5        # 每轮最多纳入的候选币种数量
+
 # 合约交易配置
 contract_trading:
   enabled: true  # 启用合约交易
