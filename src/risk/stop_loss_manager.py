@@ -11,6 +11,7 @@ from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
 from ..trading.order_manager import OrderManager
 from ..core.exception import RiskException
+from .stop_loss_utils import get_symbol_price_stop_pct
 
 
 class StopLossManager:
@@ -24,8 +25,8 @@ class StopLossManager:
         
         # 获取配置
         self.stop_loss_config = self.config_mgr.get_config('risk', 'stop_loss')
-        self.default_stop_loss_pct = self.stop_loss_config.get('default_stop_loss_pct', 0.05)
-        self.max_stop_loss_pct = self.stop_loss_config.get('max_stop_loss_pct', 0.10)
+        self.default_stop_loss_pct = self.stop_loss_config.get('default_stop_loss_pct', 0.002)
+        self.max_stop_loss_pct = self.stop_loss_config.get('max_stop_loss_pct', 0.01)
         
         # 止损订单
         self.stop_loss_orders: Dict[str, Dict] = {}  # key: position_id, value: stop_loss_info
@@ -47,11 +48,15 @@ class StopLossManager:
         """
         try:
             # 计算止损价格
+            price_stop_pct = get_symbol_price_stop_pct(symbol, self.config_mgr)
+            if price_stop_pct <= 0:
+                price_stop_pct = self.default_stop_loss_pct
+
             if stop_loss_price is None:
                 if side == 'buy':
-                    stop_loss_price = entry_price * (1 - self.default_stop_loss_pct)
+                    stop_loss_price = entry_price * (1 - price_stop_pct)
                 else:  # sell
-                    stop_loss_price = entry_price * (1 + self.default_stop_loss_pct)
+                    stop_loss_price = entry_price * (1 + price_stop_pct)
             
             stop_loss_info = {
                 'symbol': symbol,

@@ -14,6 +14,7 @@ from ..risk.position_controller import PositionController
 from ..risk.stop_loss_manager import StopLossManager
 from ..risk.drawdown_controller import DrawdownController
 from ..risk.alert_system import AlertSystem
+from .stop_loss_utils import get_symbol_account_loss_pct
 from ..core.exception import RiskException
 
 
@@ -61,12 +62,15 @@ class RiskManager:
             
             # 1. 检查单笔风险限制
             max_loss_per_trade = self.config_mgr.get_config('risk', 'risk_limits.max_loss_per_trade')
-            estimated_loss = position_size * self.config_mgr.get_config('risk', 'stop_loss.default_stop_loss_pct')
+            account_loss_pct = get_symbol_account_loss_pct(symbol, self.config_mgr)
+            if account_loss_pct <= 0:
+                account_loss_pct = self.config_mgr.get_config('risk', 'stop_loss.default_stop_loss_pct', 0.002)
+            estimated_loss = position_size * account_loss_pct
             
             if estimated_loss > max_loss_per_trade:
                 self.logger.warning(
                     f"{symbol}: [风险检查] 单笔风险{estimated_loss:.2%}超过限制{max_loss_per_trade:.2%}，"
-                    f"仓位={position_size:.2%}, 止损={self.config_mgr.get_config('risk', 'stop_loss.default_stop_loss_pct'):.2%}"
+                    f"仓位={position_size:.2%}, 账户止损={account_loss_pct:.2%}"
                 )
                 self.alert_system.send_alert(
                     'risk_limit',

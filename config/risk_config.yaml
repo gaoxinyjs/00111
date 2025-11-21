@@ -88,17 +88,21 @@ position_management:
       - level: 0.20
         position_coeff: 0.1
 
-# 止损配置（参考ds-main：1%止损，3%止盈，1:3盈亏比）
+# 止损配置（账户维度控制，价格距离自动按杠杆换算）
 stop_loss:
   enabled: true
-  default_stop_loss_pct: 0.03  # 更宽的基础止损：3%
-  max_stop_loss_pct: 0.05  # 允许最大止损到5%以适应波动
+  account_stop_loss_pct: 0.015  # 账户最大亏损1.5%
+  default_leverage: 5  # 当交易对未配置杠杆时的默认值
+  default_stop_loss_pct: 0.002  # 价格层面的兜底（0.2%）
+  min_price_stop_loss_pct: 0.001  # 最小允许价格止损距离0.1%
+  max_price_stop_loss_pct: 0.005  # 最大允许价格止损距离0.5%
+  max_stop_loss_pct: 0.01  # 兜底价格止损上限（用于异常波动）
   
   # 移动止损（像狼一样保护猎物）
   trailing_stop:
     enabled: true
-    activation_profit: 0.02  # 盈利2%后立即激活（快速保护利润）
-    trailing_pct: 0.01  # 追踪1%（紧密保护，获利就跑）
+    activation_profit: 0.01  # 盈利1%后立即激活（符合策略文档）
+    trailing_pct: 0.005  # 追踪0.5%（快速回到保本附近）
   
   # ATR止损
   atr_stop:

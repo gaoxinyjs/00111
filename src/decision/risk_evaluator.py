@@ -11,6 +11,11 @@ from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
 from ..analysis.signal_generator import Signal
 from ..core.exception import RiskException
+from ..risk.stop_loss_utils import (
+    get_symbol_account_loss_pct,
+    get_symbol_leverage,
+    account_pct_to_price_pct,
+)
 
 
 class RiskEvaluator:
@@ -60,8 +65,10 @@ class RiskEvaluator:
             
             # 1. 检查单笔风险限制
             max_loss_per_trade = self.risk_config.get('max_loss_per_trade', 0.02)
-            default_stop_loss_pct = self.stop_loss_config.get('default_stop_loss_pct', 0.01)  # 使用ds-main的1%止损
-            estimated_loss = position_size * default_stop_loss_pct
+            account_loss_pct = get_symbol_account_loss_pct(symbol, self.config_mgr)
+            if account_loss_pct <= 0:
+                account_loss_pct = self.stop_loss_config.get('account_stop_loss_pct', 0.015)
+            estimated_loss = position_size * account_loss_pct
             
             if estimated_loss > max_loss_per_trade:
                 risk_result['warnings'].append(
@@ -69,7 +76,7 @@ class RiskEvaluator:
                 )
                 self.logger.warning(
                     f"{symbol}: [风险评估] 单笔风险超限: "
-                    f"仓位={position_size:.2%}, 止损={default_stop_loss_pct:.2%}, "
+                    f"仓位={position_size:.2%}, 账户止损={account_loss_pct:.2%}, "
                     f"估计损失={estimated_loss:.2%}, 限制={max_loss_per_trade:.2%}"
                 )
                 return risk_result
@@ -96,17 +103,7 @@ class RiskEvaluator:
             # 如果没有开仓价格，使用当前价格作为参考（但会在订单成交后基于实际成交价格重新计算）
             entry_price = market_data.get('entry_price') or market_data.get('price', 0)
             if entry_price > 0:
-                # 获取杠杆倍数（用于计算价格变动百分比）
-                leverage = 10  # 默认10倍杠杆
-                try:
-                    trading_config = self.config_mgr.get_config('trading', 'trading_pairs')
-                    for pair in trading_config:
-                        if pair.get('symbol') == symbol:
-                            leverage = pair.get('leverage', 10)
-                            leverage = int(leverage) if leverage else 10
-                            break
-                except Exception:
-                    leverage = 10
+                leverage = get_symbol_leverage(symbol, self.config_mgr)
                 
                 # 根据市场波动率调整止损止盈
                 atr_pct = market_data.get('indicators', {}).get('atr_pct', 1.0)
@@ -117,17 +114,15 @@ class RiskEvaluator:
                         atr_pct = 1.0
                 
                 # 根据波动率调整止损止盈
+                base_account_stop = self.stop_loss_config.get('account_stop_loss_pct', 0.015)
                 if atr_pct < 1.0:
-                    # 低波动率：止损1.2%，止盈2.5%
-                    account_stop_loss_pct = 0.012
+                    account_stop_loss_pct = min(base_account_stop, 0.012)
                     account_take_profit_pct = 0.025
                 elif atr_pct < 2.0:
-                    # 中等波动率：止损1.5%，止盈3%
-                    account_stop_loss_pct = 0.015
+                    account_stop_loss_pct = base_account_stop
                     account_take_profit_pct = 0.03
                 else:
-                    # 高波动率：止损2%，止盈4%
-                    account_stop_loss_pct = 0.02
+                    account_stop_loss_pct = max(base_account_stop, 0.02)
                     account_take_profit_pct = 0.04
                 
                 # 根据信号强度调整止盈（强烈信号可以提高止盈）
@@ -139,9 +134,14 @@ class RiskEvaluator:
                     # 弱信号：止盈2.5%
                     account_take_profit_pct = max(account_take_profit_pct * 0.83, 0.025)
                 
-                # 直接在价格层面设置止盈止损，避免被杠杆换算后过于紧密
-                stop_loss_price_change_pct = account_stop_loss_pct
-                take_profit_price_change_pct = account_take_profit_pct
+                stop_loss_price_change_pct = account_pct_to_price_pct(
+                    account_stop_loss_pct, leverage, self.stop_loss_config
+                )
+                take_profit_price_change_pct = account_pct_to_price_pct(
+                    account_take_profit_pct, leverage, self.stop_loss_config, clamp=False
+                )
+                if take_profit_price_change_pct < stop_loss_price_change_pct * 1.5:
+                    take_profit_price_change_pct = stop_loss_price_change_pct * 1.5
                 
                 if signal.type == 'buy':
                     # 做多：止损价格 = 开仓价格 * (1 - 价格变动百分比)，止盈价格 = 开仓价格 * (1 + 价格变动百分比)
