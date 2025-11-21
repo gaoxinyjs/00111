@@ -62,17 +62,30 @@ class RiskManager:
                 return True
             
             context = context or {}
-            source = context.get('source', '').lower()
+            source = (context.get('source') or '').lower()
             is_ai_signal = context.get('is_ai', False) or source in ('ai', 'deepseek', 'deepseek_ai')
             base_risk_limits = self.config_mgr.get_config('risk', 'risk_limits')
-            ai_overrides = self.config_mgr.get_config('risk', 'ai_overrides', {})
-            use_ai_override = is_ai_signal and ai_overrides.get('enabled', False)
+            ai_override_cfg = self.config_mgr.get_config('risk', 'ai_overrides', {}) or {}
+            override_cfg: Dict[str, Any] = {}
+            if ai_override_cfg.get('enabled'):
+                # 先匹配source专属配置
+                sources_cfg = ai_override_cfg.get('sources', {}) or {}
+                matched = None
+                if source:
+                    for key, value in sources_cfg.items():
+                        if isinstance(key, str) and key.lower() == source and value:
+                            matched = value
+                            break
+                if matched:
+                    override_cfg = matched
+                elif is_ai_signal:
+                    override_cfg = ai_override_cfg.get('default', {}) or {}
+            use_override = bool(override_cfg)
 
             def _get_limit(key: str, default: float) -> float:
                 base_value = base_risk_limits.get(key, default) if isinstance(base_risk_limits, dict) else default
-                if use_ai_override:
-                    return ai_overrides.get(key, base_value)
-                return base_value
+                override_value = override_cfg.get(key) if use_override else None
+                return override_value if override_value is not None else base_value
 
             # 1. 检查单笔风险限制
             max_loss_per_trade = _get_limit('max_loss_per_trade', 0.02)
@@ -116,10 +129,18 @@ class RiskManager:
                 )
                 return False
             
-            position_multiplier = ai_overrides.get('position_limit_multiplier', 1.0) if use_ai_override else 1.0
+            position_multiplier = override_cfg.get('position_limit_multiplier', 1.0) if use_override else 1.0
+            drawdown_levels_override = override_cfg.get('drawdown_levels') if use_override else None
+            if drawdown_levels_override:
+                try:
+                    coeff = self.drawdown_controller.get_position_coefficient(drawdown_levels_override)
+                    position_multiplier *= coeff
+                except Exception as coeff_err:
+                    self.logger.warning(f"{symbol}: 计算AI回撤仓位系数失败: {coeff_err}")
+            # 仅当系数 !=1 时才调整限制
             max_single_limit = None
             max_total_limit = None
-            if position_multiplier and position_multiplier != 1.0:
+            if position_multiplier and abs(position_multiplier - 1.0) > 1e-6:
                 max_single_limit = self.position_controller.max_position_size * position_multiplier
                 max_total_limit = self.position_controller.max_total_position * position_multiplier
             # 4. 检查仓位限制
@@ -131,8 +152,8 @@ class RiskManager:
                 return False
             
             # 5. 检查回撤限制
-            drawdown_override = ai_overrides.get('drawdown_max') if use_ai_override else None
-            if not self.drawdown_controller.check_drawdown_limit(drawdown_override):
+            drawdown_override = override_cfg.get('drawdown_max') if use_override else None
+            if not self.drawdown_controller.check_drawdown_limit(drawdown_override, drawdown_levels_override):
                 self.logger.warning(f"{symbol}: [风险检查] 回撤限制检查失败")
                 self.alert_system.send_alert(
                     'drawdown_limit',
