@@ -15,6 +15,7 @@ from ..core.logger import get_logger
 from ..trading.order_manager import OrderManager, Order, OrderStatus
 from ..decision.decision_engine import TradingDecision
 from ..core.exception import TradingException
+from ..risk.stop_loss_utils import get_symbol_price_stop_pct
 
 
 class ExecutionEngine:
@@ -521,6 +522,17 @@ class ExecutionEngine:
                         self.logger.error(f"设置成交后止盈止损失败 {symbol}: {e}")
                 elif not is_closing:
                     self.logger.warning(f"⚠️ {symbol}: 订单已成交，但止盈止损数据缺失，未能自动设置")
+                    fallback_ok = await self._apply_fallback_protective_orders(
+                        symbol=symbol,
+                        decision=decision,
+                        order=order,
+                        filled_price=filled_price,
+                        tick_size=tick_size,
+                    )
+                    if not fallback_ok:
+                        self.logger.error(
+                            f"❌ {symbol}: Fallback止盈止损也失败，请立即人工检查该持仓"
+                        )
             
             # 7. 更新统计
             execution_time = time.time() - start_time
@@ -1172,6 +1184,55 @@ class ExecutionEngine:
         except Exception as e:
             self.logger.error(f"设置止盈止损失败 {symbol}: {e}")
     
+    async def _apply_fallback_protective_orders(
+        self,
+        symbol: str,
+        decision: TradingDecision,
+        order: Order,
+        filled_price: float,
+        tick_size: float,
+    ) -> bool:
+        """
+        在未能成功附加止盈止损时，使用配置的账户止损比例快速补充保护单。
+        """
+        try:
+            fallback_stop_pct = get_symbol_price_stop_pct(symbol, self.config_mgr)
+            if fallback_stop_pct <= 0 or filled_price <= 0:
+                return False
+            tp_ratio = float(self.risk_config.get('take_profit_to_stop_ratio', 2.0) or 2.0)
+            if decision.action in ['long', 'buy']:
+                stop_price = filled_price * (1 - fallback_stop_pct)
+                take_price = filled_price * (1 + fallback_stop_pct * tp_ratio)
+                position_side_for_sl = 'long'
+                original_side = 'buy'
+            else:
+                stop_price = filled_price * (1 + fallback_stop_pct)
+                take_price = filled_price * (1 - fallback_stop_pct * tp_ratio)
+                position_side_for_sl = 'short'
+                original_side = 'sell'
+            stop_price, take_price = self._adjust_sl_tp_prices(
+                side=original_side,
+                entry_price=filled_price,
+                stop_loss=stop_price,
+                take_profit=take_price,
+                tick_size=tick_size,
+            )
+            await self._set_stop_loss_take_profit(
+                symbol=symbol,
+                side=original_side,
+                position_side=position_side_for_sl,
+                stop_loss_price=stop_price,
+                take_profit_price=take_price,
+                main_order=order,
+            )
+            self.logger.info(
+                f"✅ {symbol}: 使用Fallback止盈止损成功 | 止损={stop_price:.5f}, 止盈={take_price:.5f}"
+            )
+            return True
+        except Exception as err:
+            self.logger.error(f"❌ {symbol}: Fallback止盈止损设置失败: {err}")
+            return False
+
     async def _update_stop_loss_take_profit(self, symbol: str, order: Order,
                                              stop_loss_price: float, take_profit_price: float,
                                              action: str):

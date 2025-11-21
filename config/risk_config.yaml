@@ -88,17 +88,21 @@ position_management:
       - level: 0.20
         position_coeff: 0.1
 
-# 止损配置（参考ds-main：1%止损，3%止盈，1:3盈亏比）
+# 止损配置（账户维度控制，价格距离自动按杠杆换算）
 stop_loss:
   enabled: true
-  default_stop_loss_pct: 0.03  # 更宽的基础止损：3%
-  max_stop_loss_pct: 0.05  # 允许最大止损到5%以适应波动
+  account_stop_loss_pct: 0.015  # 账户最大亏损1.5%
+  default_leverage: 5  # 当交易对未配置杠杆时的默认值
+  default_stop_loss_pct: 0.002  # 价格层面的兜底（0.2%）
+  min_price_stop_loss_pct: 0.001  # 最小允许价格止损距离0.1%
+  max_price_stop_loss_pct: 0.005  # 最大允许价格止损距离0.5%
+  max_stop_loss_pct: 0.01  # 兜底价格止损上限（用于异常波动）
   
   # 移动止损（像狼一样保护猎物）
   trailing_stop:
     enabled: true
-    activation_profit: 0.02  # 盈利2%后立即激活（快速保护利润）
-    trailing_pct: 0.01  # 追踪1%（紧密保护，获利就跑）
+    activation_profit: 0.01  # 盈利1%后立即激活（符合策略文档）
+    trailing_pct: 0.005  # 追踪0.5%（快速回到保本附近）
   
   # ATR止损
   atr_stop:
@@ -118,6 +122,46 @@ risk_limits:
   max_loss_per_day: 0.02  # 单日最大亏损2%（参考ds-main）
   max_loss_per_week: 0.10  # 单周最大亏损10%（严格风险控制）
   max_consecutive_losses: 2  # 最大连续亏损次数（参考ds-main：2次亏损暂停）
+
+  ai_overrides:
+    enabled: true
+    default:
+      max_loss_per_trade: 0.025
+      max_loss_per_day: 0.03
+      max_loss_per_week: 0.12
+      position_limit_multiplier: 1.1
+      drawdown_max: 0.22
+      drawdown_levels:
+        - level: 0.05
+          position_coeff: 0.9
+        - level: 0.10
+          position_coeff: 0.6
+    sources:
+      deepseek:
+        max_loss_per_trade: 0.03
+        max_loss_per_day: 0.035
+        max_loss_per_week: 0.12
+        position_limit_multiplier: 1.15
+        drawdown_max: 0.25
+        drawdown_levels:
+          - level: 0.04
+            position_coeff: 0.95
+          - level: 0.08
+            position_coeff: 0.75
+          - level: 0.12
+            position_coeff: 0.5
+      other_ai:
+        max_loss_per_trade: 0.02
+        max_loss_per_day: 0.025
+        max_loss_per_week: 0.10
+        position_limit_multiplier: 1.05
+        drawdown_max: 0.20
+        drawdown_levels:
+          - level: 0.05
+            position_coeff: 0.85
+          - level: 0.10
+            position_coeff: 0.55
+    notes: "默认用于AI信号，sources可针对不同供应商自定义"
 
 macro_events:
   enabled: true

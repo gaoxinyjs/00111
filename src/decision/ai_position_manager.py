@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
 from ..analysis.deepseek_client import DeepSeekClient
+from ..risk.stop_loss_utils import get_symbol_price_stop_pct
 
 
 class AIPositionManager:
@@ -192,7 +193,7 @@ class AIPositionManager:
                 profit_pct = ((entry_price - current_price) / entry_price) * 100
             
             # 基础止损止盈
-            base_stop_loss_pct = self.stop_loss_config.get('default_stop_loss_pct', 0.05)
+            base_stop_loss_pct = get_symbol_price_stop_pct(symbol, self.config_mgr)
             take_profit_pct = 0.15  # 目标止盈15%
             
             # 动态止损：盈利后移动止损

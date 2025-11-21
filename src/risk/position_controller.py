@@ -26,7 +26,9 @@ class PositionController:
         # 当前持仓
         self.current_positions: Dict[str, Dict] = {}
     
-    def check_position_limit(self, symbol: str, new_position_size: float) -> bool:
+    def check_position_limit(self, symbol: str, new_position_size: float,
+                             max_single_limit: Optional[float] = None,
+                             max_total_limit: Optional[float] = None) -> bool:
         """
         检查仓位限制
         
@@ -38,10 +40,12 @@ class PositionController:
             是否通过限制检查
         """
         try:
+            single_limit = max_single_limit if max_single_limit is not None else self.max_position_size
+            total_limit = max_total_limit if max_total_limit is not None else self.max_total_position
             # 1. 检查单币种仓位限制
-            if new_position_size > self.max_position_size:
+            if new_position_size > single_limit:
                 self.logger.warning(
-                    f"{symbol}: [仓位检查] 单币种仓位{new_position_size:.2%}超过限制{self.max_position_size:.2%}"
+                    f"{symbol}: [仓位检查] 单币种仓位{new_position_size:.2%}超过限制{single_limit:.2%}"
                 )
                 return False
             
@@ -49,9 +53,9 @@ class PositionController:
             total_position = sum(p.get('size', 0) for p in self.current_positions.values())
             total_position += new_position_size
             
-            if total_position > self.max_total_position:
+            if total_position > total_limit:
                 self.logger.warning(
-                    f"{symbol}: [仓位检查] 总仓位{total_position:.2%}超过限制{self.max_total_position:.2%}，"
+                    f"{symbol}: [仓位检查] 总仓位{total_position:.2%}超过限制{total_limit:.2%}，"
                     f"当前持仓={sum(p.get('size', 0) for p in self.current_positions.values()):.2%}, "
                     f"新增仓位={new_position_size:.2%}"
                 )
@@ -59,7 +63,7 @@ class PositionController:
             
             self.logger.debug(
                 f"{symbol}: [仓位检查] 通过，仓位={new_position_size:.2%}, "
-                f"单币种限制={self.max_position_size:.2%}, 总仓位={total_position:.2%}, 总限制={self.max_total_position:.2%}"
+                f"单币种限制={single_limit:.2%}, 总仓位={total_position:.2%}, 总限制={total_limit:.2%}"
             )
             return True
         

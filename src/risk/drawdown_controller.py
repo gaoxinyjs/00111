@@ -5,7 +5,7 @@
 最大回撤监控，回撤限制检查，回撤恢复机制
 """
 
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from datetime import datetime
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
@@ -76,7 +76,8 @@ class DrawdownController:
         
         return (self.peak_equity - self.current_equity) / self.peak_equity
     
-    def check_drawdown_limit(self) -> bool:
+    def check_drawdown_limit(self, max_drawdown_override: Optional[float] = None,
+                             levels_override: Optional[List[Dict[str, Any]]] = None) -> bool:
         """
         检查回撤限制
         
@@ -94,15 +95,16 @@ class DrawdownController:
         
         current_drawdown = self.get_current_drawdown()
         
-        if current_drawdown >= self.max_drawdown:
+        limit = max_drawdown_override if max_drawdown_override is not None else self.max_drawdown
+        if current_drawdown >= limit:
             self.logger.warning(
-                f"[回撤检查] 回撤{current_drawdown:.2%}超过最大限制{self.max_drawdown:.2%}，"
+                f"[回撤检查] 回撤{current_drawdown:.2%}超过最大限制{limit:.2%}，"
                 f"峰值净值={self.peak_equity:.2f}, 当前净值={self.current_equity:.2f}"
             )
             return False
         
         self.logger.debug(
-            f"[回撤检查] 通过，当前回撤={current_drawdown:.2%}, 限制={self.max_drawdown:.2%}"
+            f"[回撤检查] 通过，当前回撤={current_drawdown:.2%}, 限制={limit:.2%}"
         )
         return True
     
@@ -118,8 +120,10 @@ class DrawdownController:
         
         current_drawdown = self.get_current_drawdown()
         
-        # 根据回撤等级获取仓位系数
-        for level_config in self.drawdown_levels:
+        levels = levels_override if levels_override else self.drawdown_levels
+        if not levels:
+            return 1.0
+        for level_config in levels:
             level = level_config.get('level', 0)
             coeff = level_config.get('position_coeff', 1.0)
             

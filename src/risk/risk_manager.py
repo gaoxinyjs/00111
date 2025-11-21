@@ -14,6 +14,7 @@ from ..risk.position_controller import PositionController
 from ..risk.stop_loss_manager import StopLossManager
 from ..risk.drawdown_controller import DrawdownController
 from ..risk.alert_system import AlertSystem
+from .stop_loss_utils import get_symbol_account_loss_pct
 from ..core.exception import RiskException
 
 
@@ -40,7 +41,8 @@ class RiskManager:
     
     def check_risk_before_trade(self, symbol: str, position_size: float,
                                market_data: Dict[str, Any], 
-                               is_closing: bool = False) -> bool:
+                               is_closing: bool = False,
+                               context: Optional[Dict[str, Any]] = None) -> bool:
         """
         交易前风险检查
         
@@ -59,14 +61,43 @@ class RiskManager:
                 self.logger.debug(f"{symbol}: 平仓操作，跳过风险检查")
                 return True
             
+            context = context or {}
+            source = (context.get('source') or '').lower()
+            is_ai_signal = context.get('is_ai', False) or source in ('ai', 'deepseek', 'deepseek_ai')
+            base_risk_limits = self.config_mgr.get_config('risk', 'risk_limits')
+            ai_override_cfg = self.config_mgr.get_config('risk', 'ai_overrides', {}) or {}
+            override_cfg: Dict[str, Any] = {}
+            if ai_override_cfg.get('enabled'):
+                # 先匹配source专属配置
+                sources_cfg = ai_override_cfg.get('sources', {}) or {}
+                matched = None
+                if source:
+                    for key, value in sources_cfg.items():
+                        if isinstance(key, str) and key.lower() == source and value:
+                            matched = value
+                            break
+                if matched:
+                    override_cfg = matched
+                elif is_ai_signal:
+                    override_cfg = ai_override_cfg.get('default', {}) or {}
+            use_override = bool(override_cfg)
+
+            def _get_limit(key: str, default: float) -> float:
+                base_value = base_risk_limits.get(key, default) if isinstance(base_risk_limits, dict) else default
+                override_value = override_cfg.get(key) if use_override else None
+                return override_value if override_value is not None else base_value
+
             # 1. 检查单笔风险限制
-            max_loss_per_trade = self.config_mgr.get_config('risk', 'risk_limits.max_loss_per_trade')
-            estimated_loss = position_size * self.config_mgr.get_config('risk', 'stop_loss.default_stop_loss_pct')
+            max_loss_per_trade = _get_limit('max_loss_per_trade', 0.02)
+            account_loss_pct = get_symbol_account_loss_pct(symbol, self.config_mgr)
+            if account_loss_pct <= 0:
+                account_loss_pct = self.config_mgr.get_config('risk', 'stop_loss.account_stop_loss_pct', 0.015)
+            estimated_loss = position_size * account_loss_pct
             
             if estimated_loss > max_loss_per_trade:
                 self.logger.warning(
                     f"{symbol}: [风险检查] 单笔风险{estimated_loss:.2%}超过限制{max_loss_per_trade:.2%}，"
-                    f"仓位={position_size:.2%}, 止损={self.config_mgr.get_config('risk', 'stop_loss.default_stop_loss_pct'):.2%}"
+                    f"仓位={position_size:.2%}, 账户止损={account_loss_pct:.2%}"
                 )
                 self.alert_system.send_alert(
                     'risk_limit',
@@ -75,25 +106,54 @@ class RiskManager:
                 return False
             
             # 2. 检查单日风险限制
-            if not self.risk_evaluator.check_daily_risk_limit(self.daily_loss):
+            daily_limit = _get_limit('max_loss_per_day', 0.02)
+            if not self.risk_evaluator.check_daily_risk_limit(self.daily_loss, daily_limit):
                 self.logger.warning(
-                    f"{symbol}: [风险检查] 单日风险{self.daily_loss:.2%}超过限制"
+                    f"{symbol}: [风险检查] 单日风险{self.daily_loss:.2%}超过限制{daily_limit:.2%}"
                 )
                 self.alert_system.send_alert(
                     'daily_risk_limit',
-                    f"单日风险超限: 当前损失={self.daily_loss:.2%}"
+                    f"单日风险超限: 当前损失={self.daily_loss:.2%}, 限制={daily_limit:.2%}"
+                )
+                return False
+
+            # 3. 检查单周风险限制
+            weekly_limit = _get_limit('max_loss_per_week', 0.10)
+            if not self.risk_evaluator.check_weekly_risk_limit(self.weekly_loss, weekly_limit):
+                self.logger.warning(
+                    f"{symbol}: [风险检查] 单周风险{self.weekly_loss:.2%}超过限制{weekly_limit:.2%}"
+                )
+                self.alert_system.send_alert(
+                    'weekly_risk_limit',
+                    f"单周风险超限: 当前损失={self.weekly_loss:.2%}, 限制={weekly_limit:.2%}"
                 )
                 return False
             
-            # 3. 检查仓位限制
-            if not self.position_controller.check_position_limit(symbol, position_size):
+            position_multiplier = override_cfg.get('position_limit_multiplier', 1.0) if use_override else 1.0
+            drawdown_levels_override = override_cfg.get('drawdown_levels') if use_override else None
+            if drawdown_levels_override:
+                try:
+                    coeff = self.drawdown_controller.get_position_coefficient(drawdown_levels_override)
+                    position_multiplier *= coeff
+                except Exception as coeff_err:
+                    self.logger.warning(f"{symbol}: 计算AI回撤仓位系数失败: {coeff_err}")
+            # 仅当系数 !=1 时才调整限制
+            max_single_limit = None
+            max_total_limit = None
+            if position_multiplier and abs(position_multiplier - 1.0) > 1e-6:
+                max_single_limit = self.position_controller.max_position_size * position_multiplier
+                max_total_limit = self.position_controller.max_total_position * position_multiplier
+            # 4. 检查仓位限制
+            if not self.position_controller.check_position_limit(symbol, position_size,
+                                                                 max_single_limit, max_total_limit):
                 self.logger.warning(
                     f"{symbol}: [风险检查] 仓位限制检查失败，仓位={position_size:.2%}"
                 )
                 return False
             
-            # 4. 检查回撤限制
-            if not self.drawdown_controller.check_drawdown_limit():
+            # 5. 检查回撤限制
+            drawdown_override = override_cfg.get('drawdown_max') if use_override else None
+            if not self.drawdown_controller.check_drawdown_limit(drawdown_override, drawdown_levels_override):
                 self.logger.warning(f"{symbol}: [风险检查] 回撤限制检查失败")
                 self.alert_system.send_alert(
                     'drawdown_limit',

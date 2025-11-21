@@ -1683,40 +1683,37 @@ class TradingEngine:
                                 is_deepseek_decision = True
                                 break
                 
-                # 如果是DeepSeek决策，跳过所有检查，直接执行
                 if is_deepseek_decision:
                     self.logger.info(
-                        f"🎯 [严格执行DeepSeek决策] {symbol}: "
-                        f"这是DeepSeek的决策，跳过所有检查，直接执行"
+                        f"🎯 [DeepSeek决策] {symbol}: "
+                        f"AI信号优先执行，但仍需通过风险/仓位检查"
                     )
                 else:
                     # 非DeepSeek决策，进行常规检查
-                    # 检查是否应该执行
                     if not self.decision_engine.should_execute_decision(decision):
                         self.logger.info(f"{symbol}: 决策不满足执行条件，跳过")
                         continue
                     
-                    # 检查信心度
                     if decision.confidence < self.min_confidence:
                         self.logger.info(
                             f"{symbol}: 信心度{decision.confidence:.2f}低于阈值{self.min_confidence}，跳过执行"
                         )
                         continue
                     
-                    # 检查仓位大小
                     if decision.position_size < self.min_position_size:
                         self.logger.info(
                             f"{symbol}: 仓位大小{decision.position_size:.2%}低于阈值{self.min_position_size:.2%}，跳过执行"
                         )
                         continue
-                    
-                    # 风险检查
-                    position_size = decision.position_size
-                    market_data = {'price': decision.price or 0, 'volatility': 0.25}
-                    
-                    if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data):
-                        self.logger.warning(f"{symbol}: 风险检查未通过，拒绝交易")
-                        continue
+                
+                # 风险检查对所有决策生效
+                position_size = decision.position_size
+                market_data = {'price': decision.price or 0, 'volatility': 0.25}
+                
+                risk_context = {'source': 'deepseek', 'is_ai': True} if is_deepseek_decision else None
+                if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data, context=risk_context):
+                    self.logger.warning(f"{symbol}: 风险检查未通过，拒绝交易")
+                    continue
                 
                 # 记录准备执行的决策
                 action_desc = {
@@ -2141,6 +2138,14 @@ class TradingEngine:
                                 f"开仓价={entry_price:.5f}, 当前价={current_price:.5f} | "
                                 f"持仓量={position_size:.4f} | ⚠️ 立即平仓！"
                             )
+                            try:
+                                loss_ratio = min(abs(account_pnl_pct) / 100.0, 1.0)
+                                self.risk_manager.update_loss(loss_ratio)
+                                self.logger.info(
+                                    f"📉 [风险累计] {symbol}: 已更新当日亏损 {loss_ratio:.2%}"
+                                )
+                            except Exception as loss_err:
+                                self.logger.warning(f"更新日亏损失败 {symbol}: {loss_err}")
                             # 生成平仓决策
                             close_decision = await self._create_close_decision(
                                 symbol, position, '快速止损', symbol_market_data, current_price
