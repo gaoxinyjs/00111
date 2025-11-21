@@ -256,6 +256,25 @@ class TradingEngine:
             )
         
         return closing_decisions + [best_decision]
+
+    def _seconds_until_next_interval(self, interval_seconds: int) -> float:
+        """计算距离下一个整数间隔的秒数（按UTC时间对齐，每15分钟整点）"""
+        if interval_seconds <= 0:
+            return 0.0
+        now = datetime.utcnow()
+        now_ts = now.timestamp()
+        next_ts = ((int(now_ts) // interval_seconds) + 1) * interval_seconds
+        delay = max(0.0, next_ts - now_ts)
+        return delay
+
+    async def _sleep_until_next_aligned_window(self, interval_seconds: int, context: str = ""):
+        """等待到下一个指定间隔的整点（例如 00/15/30/45 分），确保开仓时间对齐"""
+        delay = self._seconds_until_next_interval(interval_seconds)
+        if delay <= 1:
+            return
+        tag = f"[TopSelection]{context}" if context else "[TopSelection]"
+        self.logger.info(f"{tag} 距离下一个{interval_seconds//60}分钟整窗口还有 {delay:.0f} 秒，等待对齐...")
+        await asyncio.sleep(delay)
     
     async def start(self):
         """启动交易引擎"""
@@ -344,6 +363,12 @@ class TradingEngine:
             signal_interval = self.top_selection_interval
         
         self.logger.info(f"主交易循环启动，信号生成间隔: {signal_interval}秒")
+        
+        if self.top_selection_enabled:
+            await self._sleep_until_next_aligned_window(
+                self.top_selection_interval,
+                context=" 初始化"
+            )
         
         while self.is_running:
             try:
@@ -438,8 +463,14 @@ class TradingEngine:
                 # 8. 风险监控
                 await self._monitor_risk()
                 
-                # 等待下次循环
-                await asyncio.sleep(signal_interval)
+                # 等待下次循环（Top-N 策略需要对齐到15分钟整点）
+                if self.top_selection_enabled:
+                    await self._sleep_until_next_aligned_window(
+                        self.top_selection_interval,
+                        context=" 下一轮"
+                    )
+                else:
+                    await asyncio.sleep(signal_interval)
             
             except Exception as e:
                 self.logger.error(f"主交易循环出错: {e}")
