@@ -128,6 +128,8 @@ risk_limits:
     max_loss_per_trade: 0.025  # DeepSeek信号允许略高的单笔风险
     max_loss_per_day: 0.03
     max_loss_per_week: 0.12
+    position_limit_multiplier: 1.1  # 单笔/总仓位上限放宽10%
+    drawdown_max: 0.22  # 回撤容忍度略高
     notes: "仅在AI信号下生效，仍受基础风险框架约束"
 
 macro_events:

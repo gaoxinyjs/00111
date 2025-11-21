@@ -116,15 +116,23 @@ class RiskManager:
                 )
                 return False
             
+            position_multiplier = ai_overrides.get('position_limit_multiplier', 1.0) if use_ai_override else 1.0
+            max_single_limit = None
+            max_total_limit = None
+            if position_multiplier and position_multiplier != 1.0:
+                max_single_limit = self.position_controller.max_position_size * position_multiplier
+                max_total_limit = self.position_controller.max_total_position * position_multiplier
             # 4. 检查仓位限制
-            if not self.position_controller.check_position_limit(symbol, position_size):
+            if not self.position_controller.check_position_limit(symbol, position_size,
+                                                                 max_single_limit, max_total_limit):
                 self.logger.warning(
                     f"{symbol}: [风险检查] 仓位限制检查失败，仓位={position_size:.2%}"
                 )
                 return False
             
             # 5. 检查回撤限制
-            if not self.drawdown_controller.check_drawdown_limit():
+            drawdown_override = ai_overrides.get('drawdown_max') if use_ai_override else None
+            if not self.drawdown_controller.check_drawdown_limit(drawdown_override):
                 self.logger.warning(f"{symbol}: [风险检查] 回撤限制检查失败")
                 self.alert_system.send_alert(
                     'drawdown_limit',

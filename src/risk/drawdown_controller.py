@@ -76,7 +76,7 @@ class DrawdownController:
         
         return (self.peak_equity - self.current_equity) / self.peak_equity
     
-    def check_drawdown_limit(self) -> bool:
+    def check_drawdown_limit(self, max_drawdown_override: Optional[float] = None) -> bool:
         """
         检查回撤限制
         
@@ -94,15 +94,16 @@ class DrawdownController:
         
         current_drawdown = self.get_current_drawdown()
         
-        if current_drawdown >= self.max_drawdown:
+        limit = max_drawdown_override if max_drawdown_override is not None else self.max_drawdown
+        if current_drawdown >= limit:
             self.logger.warning(
-                f"[回撤检查] 回撤{current_drawdown:.2%}超过最大限制{self.max_drawdown:.2%}，"
+                f"[回撤检查] 回撤{current_drawdown:.2%}超过最大限制{limit:.2%}，"
                 f"峰值净值={self.peak_equity:.2f}, 当前净值={self.current_equity:.2f}"
             )
             return False
         
         self.logger.debug(
-            f"[回撤检查] 通过，当前回撤={current_drawdown:.2%}, 限制={self.max_drawdown:.2%}"
+            f"[回撤检查] 通过，当前回撤={current_drawdown:.2%}, 限制={limit:.2%}"
         )
         return True
     
