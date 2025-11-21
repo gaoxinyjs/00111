@@ -1710,7 +1710,8 @@ class TradingEngine:
                 position_size = decision.position_size
                 market_data = {'price': decision.price or 0, 'volatility': 0.25}
                 
-                if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data):
+                risk_context = {'source': 'deepseek', 'is_ai': True} if is_deepseek_decision else None
+                if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data, context=risk_context):
                     self.logger.warning(f"{symbol}: 风险检查未通过，拒绝交易")
                     continue
                 

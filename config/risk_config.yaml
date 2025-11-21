@@ -123,6 +123,13 @@ risk_limits:
   max_loss_per_week: 0.10  # 单周最大亏损10%（严格风险控制）
   max_consecutive_losses: 2  # 最大连续亏损次数（参考ds-main：2次亏损暂停）
 
+  ai_overrides:
+    enabled: true
+    max_loss_per_trade: 0.025  # DeepSeek信号允许略高的单笔风险
+    max_loss_per_day: 0.03
+    max_loss_per_week: 0.12
+    notes: "仅在AI信号下生效，仍受基础风险框架约束"
+
 macro_events:
   enabled: true
   default_level: "normal"

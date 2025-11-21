@@ -315,7 +315,8 @@ class RiskEvaluator:
         else:
             return 'very_high'
     
-    def check_daily_risk_limit(self, daily_loss: float) -> bool:
+    def check_daily_risk_limit(self, daily_loss: float,
+                               max_loss_per_day: Optional[float] = None) -> bool:
         """
         检查单日风险限制
         
@@ -325,10 +326,11 @@ class RiskEvaluator:
         Returns:
             是否超过限制
         """
-        max_loss_per_day = self.risk_config.get('max_loss_per_day', 0.05)
-        return daily_loss <= max_loss_per_day
+        limit = max_loss_per_day if max_loss_per_day is not None else self.risk_config.get('max_loss_per_day', 0.05)
+        return daily_loss <= limit
     
-    def check_weekly_risk_limit(self, weekly_loss: float) -> bool:
+    def check_weekly_risk_limit(self, weekly_loss: float,
+                                max_loss_per_week: Optional[float] = None) -> bool:
         """
         检查单周风险限制
         
@@ -338,8 +340,8 @@ class RiskEvaluator:
         Returns:
             是否超过限制
         """
-        max_loss_per_week = self.risk_config.get('max_loss_per_week', 0.10)
-        return weekly_loss <= max_loss_per_week
+        limit = max_loss_per_week if max_loss_per_week is not None else self.risk_config.get('max_loss_per_week', 0.10)
+        return weekly_loss <= limit
 
 
 if __name__ == "__main__":
