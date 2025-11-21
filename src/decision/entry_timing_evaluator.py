@@ -95,15 +95,10 @@ class EntryTimingEvaluator:
                     f"建议入场 | {evaluation_summary}"
                 )
             else:
-                # 针对15分钟K线优化：即使评分不足，也记录为debug级别，不阻止交易
-                self.logger.debug(
+                self.logger.info(
                     f"⚠️ [入场时机评估] {signal.symbol}: 评分={score}/100 < {self.min_entry_score}, "
-                    f"建议等待（但不阻止交易） | {evaluation_summary}"
+                    f"保持观望 | {evaluation_summary}"
                 )
-                # 对于DeepSeek决策，即使入场时机不佳也执行（但记录警告）
-                # 返回True，允许继续交易（针对15分钟K线优化）
-                should_enter = True
-                evaluation_summary = f"评分不足但允许交易（针对15分钟K线优化）: {evaluation_summary}"
             
             return should_enter, evaluation_summary, evaluation_details
         

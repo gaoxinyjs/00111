@@ -5,10 +5,8 @@
 整合数据采集、信号生成、决策、执行、风险管理的完整交易流程
 """
 import asyncio
-import json
 from copy import deepcopy
-from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 from datetime import datetime, timezone
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
@@ -22,6 +20,7 @@ from ..risk.risk_manager import RiskManager
 from ..risk.position_controller import PositionController
 from ..trading.position_manager import PositionManager
 from ..monitoring.profit_statistics import ProfitStatistics
+from ..monitoring.win_profit_tracker import WinProfitTracker
 from ..data.okx_client import get_okx_client
 from ..core.exception import TradingSystemException
 
@@ -69,6 +68,7 @@ class TradingEngine:
         from ..learning.trade_result_recorder import TradeResultRecorder
         from ..learning.prompt_optimizer import PromptOptimizer
         self.result_recorder = TradeResultRecorder()
+        self.win_profit_tracker = WinProfitTracker(recorder=self.result_recorder)
         self.prompt_optimizer = PromptOptimizer()
         self.strategy_guidelines: List[Dict[str, Any]] = []
         self._active_emphasis_factors: List[str] = []
@@ -96,10 +96,6 @@ class TradingEngine:
         # 跟踪已开仓的交易记录信息，用于平仓写入结果
         self.active_trade_records: Dict[str, Dict[str, Any]] = {}
         
-        # 交易记录日志目录
-        self.trade_log_dir = Path("logs/trades")
-        self.trade_log_dir.mkdir(parents=True, exist_ok=True)
-        
         # 15分钟超时配置（秒）
         self.force_close_timeout = 15 * 60  # 15分钟 = 900秒（强制平仓）
         self.pending_order_timeout = 15 * 60  # 15分钟 = 900秒（挂单超时）
@@ -112,11 +108,8 @@ class TradingEngine:
         
         ai_position_config = self.config_mgr.get_config('trading', 'ai_position_management', {}) or {}
         self.ai_review_enabled = ai_position_config.get('enabled', True)
-        # 强制设置为60秒（1分钟），确保每分钟检查一次持仓
         try:
-            config_interval = int(ai_position_config.get('review_interval', 60))
-            # 如果配置的间隔小于60秒，使用60秒；否则使用配置值
-            self.ai_review_interval = max(60, config_interval)
+            self.ai_review_interval = max(int(ai_position_config.get('review_interval', 60)), 5)
         except (TypeError, ValueError):
             self.ai_review_interval = 60
         max_adj = ai_position_config.get('max_adjustments_per_cycle')
@@ -126,6 +119,38 @@ class TradingEngine:
         except (TypeError, ValueError):
             self.ai_review_max_adjustments = None
         self.ai_review_task = None
+
+        # Top-N DeepSeek 策略配置
+        self.top_selection_cfg = self.config_mgr.get_config('trading', 'top_selection', {}) or {}
+        self.top_selection_enabled = bool(self.top_selection_cfg.get('enabled', False))
+        symbols_cfg = self.top_selection_cfg.get('symbols') or []
+        self.top_selection_symbols = [str(sym).strip() for sym in symbols_cfg if sym]
+        try:
+            self.top_selection_interval = max(int(self.top_selection_cfg.get('interval', 900)), 60)
+        except (TypeError, ValueError):
+            self.top_selection_interval = 900
+        try:
+            self.top_selection_max_candidates = max(int(self.top_selection_cfg.get('max_candidates', 5)), 1)
+        except (TypeError, ValueError):
+            self.top_selection_max_candidates = 5
+        try:
+            self.top_selection_priority_confidence = float(self.top_selection_cfg.get('priority_confidence', 0.65))
+        except (TypeError, ValueError):
+            self.top_selection_priority_confidence = 0.65
+        self.top_selection_last_run: Optional[datetime] = None
+
+        # DeepSeek持仓复查配置
+        review_cfg = self.config_mgr.get_config('trading', 'deepseek_position_review', {}) or {}
+        self.deepseek_review_enabled = bool(review_cfg.get('enabled', False))
+        try:
+            self.deepseek_review_interval = max(int(review_cfg.get('interval', 60)), 10)
+        except (TypeError, ValueError):
+            self.deepseek_review_interval = 60
+        try:
+            self.deepseek_review_max_symbols = max(int(review_cfg.get('max_symbols_per_cycle', 10)), 1)
+        except (TypeError, ValueError):
+            self.deepseek_review_max_symbols = 10
+        self.deepseek_review_task: Optional[asyncio.Task] = None
         
         # 注册数据回调
         self._register_callbacks()
@@ -139,6 +164,156 @@ class TradingEngine:
         """行情数据更新回调"""
         symbol = ticker_data.get('symbol')
         self.logger.debug(f"行情更新: {symbol} = {ticker_data.get('price')}")
+
+    def _get_active_selection_symbols(self) -> List[str]:
+        """返回当前策略需要重点分析的币种列表"""
+        if not self.top_selection_enabled or not self.top_selection_symbols:
+            return list(self.pair_config_map.keys())
+        ordered_unique: List[str] = []
+        for sym in self.top_selection_symbols:
+            if sym and sym not in ordered_unique:
+                ordered_unique.append(sym)
+        if not ordered_unique:
+            return list(self.pair_config_map.keys())
+        return ordered_unique[:self.top_selection_max_candidates]
+
+    def _build_ai_confidence_map(self, signals: List) -> Dict[str, float]:
+        """从信号列表中提取 DeepSeek 信心度"""
+        confidence_map: Dict[str, float] = {}
+        if not signals:
+            return confidence_map
+        for signal in signals:
+            try:
+                if signal.source not in ('ai', 'ai_analysis'):
+                    continue
+                confidence = self._extract_ai_confidence_from_signal(signal)
+                if confidence <= 0:
+                    continue
+                prev = confidence_map.get(signal.symbol, 0.0)
+                if confidence > prev:
+                    confidence_map[signal.symbol] = confidence
+            except Exception:
+                continue
+        return confidence_map
+
+    def _extract_ai_confidence_from_signal(self, signal) -> float:
+        """从 DeepSeek 信号结构中解析信心度"""
+        data = getattr(signal, 'data', {}) or {}
+        if isinstance(data, dict):
+            analysis = data.get('analysis') or data.get('metadata', {}).get('analysis') or {}
+        else:
+            analysis = {}
+        confidence = (
+            data.get('confidence')
+            or analysis.get('confidence')
+            or data.get('strength')
+            or getattr(signal, 'strength', 0.0)
+        )
+        try:
+            if isinstance(confidence, str):
+                confidence = confidence.strip().replace('%', '')
+            return float(confidence)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _filter_decisions_by_top_strategy(self, decisions: List, ai_confidence_map: Dict[str, float],
+                                          allowed_symbols: Optional[Set[str]]) -> List:
+        """
+        仅保留 Top-N 策略要求的开仓决策，始终允许平仓/风险动作
+        """
+        if not self.top_selection_enabled or not decisions:
+            return decisions
+        
+        allowed = allowed_symbols or set(self._get_active_selection_symbols())
+        closing_decisions: List = []
+        opening_candidates: List = []
+        
+        for decision in decisions:
+            if self._is_closing_position(decision.symbol, decision.action):
+                closing_decisions.append(decision)
+            else:
+                opening_candidates.append(decision)
+        
+        if not opening_candidates:
+            return decisions
+        
+        priority_candidates: List[tuple] = []
+        fallback_candidates: List[tuple] = []
+        skipped_symbols: List[str] = []
+        threshold = getattr(self, 'top_selection_priority_confidence', 0.65)
+        
+        for decision in opening_candidates:
+            symbol = decision.symbol
+            if allowed and symbol not in allowed:
+                skipped_symbols.append(symbol)
+                continue
+            score = ai_confidence_map.get(symbol, getattr(decision, 'confidence', 0.0) or 0.0)
+            if getattr(decision, '_is_deepseek_decision', False) and score >= threshold:
+                priority_candidates.append((score, decision))
+            else:
+                fallback_candidates.append((score, decision))
+
+        def pick_best(candidates: List[tuple]):
+            if not candidates:
+                return None, [], -1.0
+            best_score, best_decision = max(candidates, key=lambda item: item[0])
+            dropped_symbols = [dec.symbol for _, dec in candidates if dec is not best_decision]
+            return best_decision, dropped_symbols, best_score
+        
+        priority_decision, priority_dropped, priority_score = pick_best(priority_candidates)
+        if priority_decision:
+            if priority_dropped:
+                self.logger.info(
+                    f"[TopSelection] DeepSeek优先模式：执行 {priority_decision.symbol} "
+                    f"(信心度 {priority_score:.2f})，其余候选丢弃: {', '.join(sorted(set(priority_dropped)))}"
+                )
+            else:
+                self.logger.info(
+                    f"[TopSelection] DeepSeek优先模式：执行 {priority_decision.symbol} "
+                    f"(信心度 {priority_score:.2f})"
+                )
+            return closing_decisions + [priority_decision]
+        
+        fallback_decision, fallback_dropped, fallback_score = pick_best(fallback_candidates)
+        if fallback_decision:
+            if fallback_dropped:
+                self.logger.info(
+                    f"[TopSelection] DeepSeek信心度低于阈值({threshold:.2f})，降级执行 "
+                    f"{fallback_decision.symbol} (信心度 {fallback_score:.2f})，"
+                    f"其余候选丢弃: {', '.join(sorted(set(fallback_dropped)))}"
+                )
+            else:
+                self.logger.info(
+                    f"[TopSelection] DeepSeek信心度低于阈值({threshold:.2f})，"
+                    f"降级执行 {fallback_decision.symbol} (信心度 {fallback_score:.2f})"
+                )
+            return closing_decisions + [fallback_decision]
+        
+        if skipped_symbols:
+            self.logger.info(
+                f"[TopSelection] 未找到满足条件的开仓信号，"
+                f"跳过币种: {', '.join(sorted(set(skipped_symbols)))}"
+            )
+        return closing_decisions
+
+    def _seconds_until_next_interval(self, interval_seconds: int) -> float:
+        """计算距离下一个整数间隔的秒数（按UTC时间对齐，每15分钟整点）"""
+        if interval_seconds <= 0:
+            return 0.0
+        now = datetime.utcnow()
+        now_ts = now.timestamp()
+        next_ts = ((int(now_ts) // interval_seconds) + 1) * interval_seconds
+        delay = max(0.0, next_ts - now_ts)
+        return delay
+
+    async def _sleep_until_next_aligned_window(self, interval_seconds: int, context: str = ""):
+        """等待到下一个指定间隔的整点（例如 00/15/30/45 分），确保开仓时间对齐"""
+        delay = self._seconds_until_next_interval(interval_seconds)
+        if delay <= 1:
+            return
+        tag = f"[TopSelection]{context}" if context else "[TopSelection]"
+        self.logger.info(f"{tag} 距离下一个{interval_seconds//60}分钟整窗口还有 {delay:.0f} 秒，等待对齐...")
+        await asyncio.sleep(delay)
     
     async def start(self):
         """启动交易引擎"""
@@ -164,6 +339,10 @@ class TradingEngine:
             # 2.2. 启动AI仓位审查任务（按配置间隔执行）
             if self.ai_review_enabled and self.ai_review_task is None:
                 self.ai_review_task = asyncio.create_task(self._ai_position_review_loop())
+            
+            # 2.3. DeepSeek持仓复查任务
+            if self.deepseek_review_enabled and self.deepseek_review_task is None:
+                self.deepseek_review_task = asyncio.create_task(self._deepseek_position_review_loop())
             
             # 3. 启动主交易循环
             await self._main_trading_loop()
@@ -191,6 +370,14 @@ class TradingEngine:
                 pass
             self.ai_review_task = None
         
+        if self.deepseek_review_task:
+            self.deepseek_review_task.cancel()
+            try:
+                await self.deepseek_review_task
+            except asyncio.CancelledError:
+                pass
+            self.deepseek_review_task = None
+        
         self.logger.info("交易引擎已停止")
     
     async def _initialize_account(self):
@@ -212,73 +399,6 @@ class TradingEngine:
         except Exception as e:
             self.logger.error(f"账户初始化失败: {e}")
     
-    def _get_next_15min_interval(self, current_time: Optional[datetime] = None) -> datetime:
-        """
-        计算下一个15分钟整点时间（如9:00、9:15、9:30、9:45）
-        
-        Args:
-            current_time: 当前时间，如果为None则使用当前时间
-            
-        Returns:
-            下一个15分钟整点的datetime对象
-        """
-        if current_time is None:
-            current_time = datetime.now()
-        
-        # 获取当前时间的分钟数
-        current_minute = current_time.minute
-        
-        # 计算下一个15分钟整点
-        # 例如：如果现在是9:07，下一个整点是9:15
-        # 如果现在是9:15，下一个整点是9:30
-        next_minute = ((current_minute // 15) + 1) * 15
-        
-        if next_minute >= 60:
-            # 如果超过60分钟，则进入下一小时
-            next_time = current_time.replace(
-                hour=(current_time.hour + 1) % 24,
-                minute=0,
-                second=0,
-                microsecond=0
-            )
-        else:
-            # 在同一小时内
-            next_time = current_time.replace(
-                minute=next_minute,
-                second=0,
-                microsecond=0
-            )
-        
-        return next_time
-    
-    async def _wait_until_next_15min_interval(self):
-        """
-        等待到下一个15分钟整点时间
-        """
-        current_time = datetime.now()
-        next_interval = self._get_next_15min_interval(current_time)
-        
-        # 计算需要等待的秒数
-        wait_seconds = (next_interval - current_time).total_seconds()
-        
-        if wait_seconds > 0:
-            self.logger.info(
-                f"⏰ [等待整点时间] 当前时间: {current_time.strftime('%H:%M:%S')}, "
-                f"下一个15分钟整点: {next_interval.strftime('%H:%M:%S')}, "
-                f"等待时间: {wait_seconds:.1f}秒"
-            )
-            await asyncio.sleep(wait_seconds)
-        else:
-            # 如果已经过了整点，等待下一个整点
-            next_interval = self._get_next_15min_interval(next_interval)
-            wait_seconds = (next_interval - current_time).total_seconds()
-            self.logger.info(
-                f"⏰ [等待整点时间] 当前时间: {current_time.strftime('%H:%M:%S')}, "
-                f"下一个15分钟整点: {next_interval.strftime('%H:%M:%S')}, "
-                f"等待时间: {wait_seconds:.1f}秒"
-            )
-            await asyncio.sleep(wait_seconds)
-    
     async def _main_trading_loop(self):
         """主交易循环"""
         try:
@@ -286,23 +406,38 @@ class TradingEngine:
         except (KeyError, TypeError):
             signal_interval = 300  # 默认5分钟
         
-        self.logger.info(f"主交易循环启动，将在每15分钟整点执行交易（如9:00、9:15、9:30、9:45）")
+        if self.top_selection_enabled and signal_interval < self.top_selection_interval:
+            self.logger.info(
+                f"[TopSelection] 启用每{self.top_selection_interval//60}分钟 DeepSeek 评估，"
+                f"主循环间隔由 {signal_interval}s 调整为 {self.top_selection_interval}s"
+            )
+            signal_interval = self.top_selection_interval
         
-        # 首次启动时，等待到下一个15分钟整点
-        await self._wait_until_next_15min_interval()
+        self.logger.info(f"主交易循环启动，信号生成间隔: {signal_interval}秒")
+        
+        if self.top_selection_enabled:
+            await self._sleep_until_next_aligned_window(
+                self.top_selection_interval,
+                context=" 初始化"
+            )
         
         while self.is_running:
             try:
-                # 记录当前执行时间
-                execution_time = datetime.now()
-                self.logger.info(f"🕐 [整点执行] 当前时间: {execution_time.strftime('%H:%M:%S')}，开始执行交易逻辑")
-                
                 # 1. 数据采集（已在后台运行）
                 # 等待数据采集完成
                 await asyncio.sleep(1)
                 
                 # 2. 获取市场数据（包含多时间周期数据）
-                market_data = await self._collect_market_data()
+                selection_symbols = self._get_active_selection_symbols()
+                positions_snapshot = self.position_manager.get_all_positions()
+                symbols_for_collection = set(selection_symbols)
+                for symbol, position in positions_snapshot.items():
+                    if position.get('size', 0) > 0:
+                        symbols_for_collection.add(symbol)
+                if not symbols_for_collection:
+                    symbols_for_collection = set(self.pair_config_map.keys())
+                
+                market_data = await self._collect_market_data(symbols=list(symbols_for_collection))
                 self._update_market_data_cache(market_data)
                 
                 # 2.1. 多时间周期趋势分析和量价分析
@@ -331,9 +466,26 @@ class TradingEngine:
                 
                 # 4. 过滤信号
                 filtered_signals = self.signal_filter.filter_signals(signals)
+                ai_confidence_map = self._build_ai_confidence_map(filtered_signals)
                 
-                # 5. 生成决策
-                decisions = await self._make_decisions(market_data, filtered_signals)
+                # 5. 生成决策（仅限定 Top-N 候选 + 当前持仓）
+                allowed_symbols = (
+                    set(selection_symbols[:self.top_selection_max_candidates])
+                    if self.top_selection_enabled else None
+                )
+                decisions = await self._make_decisions(
+                    market_data,
+                    filtered_signals,
+                    allowed_symbols=allowed_symbols,
+                    positions_snapshot=positions_snapshot
+                )
+                decisions = self._filter_decisions_by_top_strategy(
+                    decisions,
+                    ai_confidence_map,
+                    allowed_symbols
+                )
+                if self.top_selection_enabled:
+                    self.top_selection_last_run = datetime.now()
                 
                 # 5.1. AI仓位管理和智能平仓检查（在生成新决策前）
                 await self._check_position_adjustments(
@@ -362,8 +514,14 @@ class TradingEngine:
                 # 8. 风险监控
                 await self._monitor_risk()
                 
-                # 等待到下一个15分钟整点
-                await self._wait_until_next_15min_interval()
+                # 等待下次循环（Top-N 策略需要对齐到15分钟整点）
+                if self.top_selection_enabled:
+                    await self._sleep_until_next_aligned_window(
+                        self.top_selection_interval,
+                        context=" 下一轮"
+                    )
+                else:
+                    await asyncio.sleep(signal_interval)
             
             except Exception as e:
                 self.logger.error(f"主交易循环出错: {e}")
@@ -1050,13 +1208,17 @@ class TradingEngine:
         return all_signals
     
     async def _make_decisions(self, market_data: Dict[str, Dict[str, Any]],
-                            signals: List) -> List:
+                             signals: List,
+                             allowed_symbols: Optional[Set[str]] = None,
+                             positions_snapshot: Optional[Dict[str, Any]] = None) -> List:
         """
         生成交易决策
         
         Args:
             market_data: 市场数据
             signals: 信号列表
+            allowed_symbols: 允许生成开仓决策的币种集合（None 表示不限制）
+            positions_snapshot: 预先获取的持仓快照，避免重复查询
             
         Returns:
             决策列表
@@ -1072,10 +1234,20 @@ class TradingEngine:
             signals_by_symbol[symbol].append(signal)
         
         # 获取当前持仓
-        positions = self.position_manager.get_all_positions()
+        positions = positions_snapshot or self.position_manager.get_all_positions()
+        positions_with_position = {
+            symbol for symbol, pos in positions.items()
+            if pos.get('size', 0) > 0
+        }
         
         for symbol, symbol_signals in signals_by_symbol.items():
             try:
+                if allowed_symbols and symbol not in allowed_symbols and symbol not in positions_with_position:
+                    self.logger.debug(
+                        f"[TopSelection] {symbol} 不在候选列表且无持仓，跳过决策生成"
+                    )
+                    continue
+                
                 # 获取当前持仓
                 current_position = positions.get(symbol)
                 
@@ -1127,32 +1299,12 @@ class TradingEngine:
                                 is_deepseek_decision = True
                                 break
                 
-                # 如果是DeepSeek决策，检查信心度（开仓操作需要信心度>0.65）
+                # 如果是DeepSeek决策，跳过所有检查，直接执行
                 if is_deepseek_decision:
-                    is_closing = self._is_closing_position(symbol, decision.action)
-                    
-                    # 只有开仓操作需要检查信心度，平仓操作不需要（因为平仓是保护性操作）
-                    if not is_closing:
-                        # DeepSeek开仓决策必须信心度>0.65才执行
-                        deepseek_min_confidence = 0.65
-                        if decision.confidence <= deepseek_min_confidence:
-                            self.logger.warning(
-                                f"⚠️ [DeepSeek开仓拒绝] {symbol}: "
-                                f"DeepSeek信心度{decision.confidence:.2f}低于阈值{deepseek_min_confidence}，跳过开仓 | "
-                                f"建议: {decision.reasoning or 'N/A'}"
-                            )
-                            continue  # 跳过开仓
-                        else:
-                            self.logger.info(
-                                f"✅ [DeepSeek开仓通过] {symbol}: "
-                                f"DeepSeek信心度{decision.confidence:.2f}高于阈值{deepseek_min_confidence}，允许开仓"
-                            )
-                    else:
-                        # 平仓操作不需要检查信心度，直接执行
-                        self.logger.info(
-                            f"🎯 [严格执行DeepSeek平仓] {symbol}: "
-                            f"这是DeepSeek的平仓决策，跳过所有检查，直接执行"
-                        )
+                    self.logger.info(
+                        f"🎯 [严格执行DeepSeek决策] {symbol}: "
+                        f"这是DeepSeek的决策，跳过所有检查，直接执行"
+                    )
                 else:
                     # 非DeepSeek决策，进行常规检查
                     # 检查是否应该执行
@@ -1174,14 +1326,11 @@ class TradingEngine:
                         )
                         continue
                     
-                    # 风险检查（平仓操作跳过风险检查，因为平仓是保护性操作，不会增加风险）
-                    is_closing = self._is_closing_position(symbol, decision.action)
-                    self.logger.info(f"🔍 [风险检查判断] {symbol}: action={decision.action}, is_closing={is_closing}")
-                    
+                    # 风险检查
                     position_size = decision.position_size
                     market_data = {'price': decision.price or 0, 'volatility': 0.25}
                     
-                    if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data, is_closing=is_closing):
+                    if not self.risk_manager.check_risk_before_trade(symbol, position_size, market_data):
                         self.logger.warning(f"{symbol}: 风险检查未通过，拒绝交易")
                         continue
                 
@@ -1220,45 +1369,6 @@ class TradingEngine:
                 
                 # 🔍 检查是否有待成交的委托订单，避免重复创建（只检查开仓订单）
                 if not self._is_closing_position(symbol, decision.action):
-                    # ⚠️ 首先检查是否已有持仓，避免重复开仓
-                    try:
-                        if self.okx_client is None:
-                            self.okx_client = await get_okx_client()
-                        positions_result = await self.okx_client.async_get_positions()
-                        
-                        # 处理不同的返回格式
-                        positions_list = []
-                        if isinstance(positions_result, dict):
-                            if positions_result.get('code') == '0':
-                                positions_list = positions_result.get('data', [])
-                        elif isinstance(positions_result, list):
-                            positions_list = positions_result
-                        
-                        # 检查是否有持仓
-                        has_position = False
-                        existing_position_side = None
-                        for pos_data in positions_list:
-                            if pos_data.get('instId') == symbol:
-                                pos_str = pos_data.get('pos', '0')
-                                position_size = abs(float(pos_str)) if pos_str else 0
-                                if position_size > 0:
-                                    has_position = True
-                                    existing_position_side = 'long' if float(pos_str) > 0 else 'short'
-                                    self.logger.warning(
-                                        f"⚠️ {symbol}: 已有持仓，跳过重复开仓 | "
-                                        f"持仓方向={existing_position_side}, "
-                                        f"持仓量={position_size:.4f} | "
-                                        f"如需改变仓位，请先平仓"
-                                    )
-                                    break
-                        
-                        if has_position:
-                            # 已有持仓，跳过开仓操作
-                            continue
-                    except Exception as e:
-                        self.logger.warning(f"检查持仓失败 {symbol}: {e}，继续执行")
-                    
-                    # 然后检查是否有待成交的委托订单
                     existing_pending = self.pending_orders.get(symbol)
                     if existing_pending:
                         existing_order = existing_pending.get('order')
@@ -1355,16 +1465,16 @@ class TradingEngine:
                         fill_price = order.average_price or order.filled_price or decision.price or symbol_market_data.get('price', 0)
                         fill_time = order.executed_at or datetime.now()
                         
+                        # 更新决策引擎的交易时间（用于15分钟间隔检查）
+                        self.decision_engine.trade_stats['last_trade_time'] = datetime.now()
+                        self.logger.debug(
+                            f"⏰ [更新交易时间] {symbol}: "
+                            f"上次交易时间={datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, "
+                            f"下次可在15分钟后生成新决策"
+                        )
+                        
                         # 记录开仓时间（如果是开仓订单）
                         if not self._is_closing_position(symbol, decision.action):
-                            # 只有开仓时才更新决策引擎的交易时间（用于15分钟间隔检查）
-                            # 平仓后不受限制，可以随时开仓
-                            self.decision_engine.trade_stats['last_trade_time'] = datetime.now()
-                            self.logger.debug(
-                                f"⏰ [更新交易时间] {symbol}: "
-                                f"上次开仓时间={datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, "
-                                f"下次可在15分钟后生成新决策"
-                            )
                             self.position_entry_times[symbol] = {
                                 'entry_time': fill_time,
                                 'position_side': decision.position_side,
@@ -1388,19 +1498,14 @@ class TradingEngine:
                                 f"开仓时间={fill_time.strftime('%Y-%m-%d %H:%M:%S')} | "
                                 f"将在15分钟后检查是否强制平仓"
                             )
-                            
-                            # 记录开仓信息到交易日志
-                            self._write_trade_log_entry(symbol, decision, order, fill_price, fill_time)
                         else:
                             # 这是平仓订单，清除开仓时间记录
-                            # 注意：平仓时不更新 last_trade_time，所以平仓后可以随时开仓
                             if symbol in self.position_entry_times:
                                 entry_time = self.position_entry_times[symbol].get('entry_time')
                                 hold_duration = (fill_time - entry_time).total_seconds() / 60 if entry_time else 0
                                 del self.position_entry_times[symbol]
                                 self.logger.info(
-                                    f"✅ [平仓清除时间记录] {symbol}: 持仓时长={hold_duration:.2f}分钟 | "
-                                    f"平仓后不受交易频率限制，可以随时开仓"
+                                    f"✅ [平仓清除时间记录] {symbol}: 持仓时长={hold_duration:.2f}分钟"
                                 )
                         
                         # 计算收益（如果是平仓）
@@ -1414,63 +1519,6 @@ class TradingEngine:
                                 'position_side': decision.position_side
                             })
                             await self._calculate_profit(order, trade_info)
-                            
-                            # 平仓成功后，等待1分钟后生成下一次交易决策
-                            self.logger.info(
-                                f"🔄 [平仓后延迟决策] {symbol}: 平仓成功，等待1分钟后生成下一次交易决策（跳过交易频率限制）"
-                            )
-                            
-                            # 等待一小段时间确保平仓订单完全成交
-                            await asyncio.sleep(2)
-                            
-                            # 等待1分钟后再生成下一次交易决策
-                            await asyncio.sleep(60)
-                            
-                            self.logger.info(
-                                f"⏰ [延迟决策触发] {symbol}: 1分钟等待完成，开始生成新的交易决策"
-                            )
-                            
-                            # 生成下一次交易决策
-                            try:
-                                # 临时保存并清除 last_trade_time，以跳过交易频率限制
-                                saved_last_trade_time = self.decision_engine.trade_stats.get('last_trade_time')
-                                self.decision_engine.trade_stats['last_trade_time'] = None
-                                
-                                try:
-                                    # 获取最新市场数据
-                                    latest_market_data = await self._collect_market_data()
-                                    self._update_market_data_cache(latest_market_data)
-                                    symbol_market_data = latest_market_data.get(symbol, {})
-                                    
-                                    if symbol_market_data:
-                                        # 生成信号
-                                        all_signals = await self._generate_signals({symbol: symbol_market_data})
-                                        
-                                        # 过滤信号
-                                        filtered_signals = self.signal_filter.filter_signals(all_signals)
-                                        
-                                        # 生成决策（此时不会受到交易频率限制）
-                                        new_decisions = await self._make_decisions(
-                                            {symbol: symbol_market_data},
-                                            filtered_signals
-                                        )
-                                        
-                                        if new_decisions:
-                                            self.logger.info(
-                                                f"✅ [平仓后延迟决策] {symbol}: 已生成新的交易计划，准备执行"
-                                            )
-                                            # 执行新决策（异步执行，不阻塞）
-                                            asyncio.create_task(self._execute_trades(new_decisions))
-                                        else:
-                                            self.logger.info(
-                                                f"ℹ️ [平仓后延迟决策] {symbol}: 未生成新的交易计划，保持观望"
-                                            )
-                                finally:
-                                    # 恢复 last_trade_time（如果之前有值）
-                                    if saved_last_trade_time:
-                                        self.decision_engine.trade_stats['last_trade_time'] = saved_last_trade_time
-                            except Exception as e:
-                                self.logger.error(f"平仓后立即生成决策失败 {symbol}: {e}")
                 
                 # 避免频繁交易
                 await asyncio.sleep(1)
@@ -1561,17 +1609,13 @@ class TradingEngine:
                         continue
                     
                     # 从API数据构建position对象（使用真实的开仓均价）
-                    # 获取 posSide（从 API 原始数据中获取）
-                    pos_side_from_api = pos_data.get('posSide', 'net')
-                    
                     position = {
                         'symbol': symbol,
                         'size': position_size,
                         'side': 'long' if float(pos_str) > 0 else 'short',
                         'avg_price': float(pos_data.get('avgPx', '0')) if pos_data.get('avgPx') else 0,
                         'average_price': float(pos_data.get('avgPx', '0')) if pos_data.get('avgPx') else 0,
-                        'mark_price': float(pos_data.get('markPx', '0')) if pos_data.get('markPx') else 0,
-                        'posSide': pos_side_from_api  # 保存 posSide 字段，用于平仓时使用
+                        'mark_price': float(pos_data.get('markPx', '0')) if pos_data.get('markPx') else 0
                     }
                     
                     # AI分析是否应该调整仓位
@@ -1600,70 +1644,27 @@ class TradingEngine:
                             f"{float(adjust_size):.2%}" if isinstance(adjust_size, (int, float)) else str(adjust_size)
                         )
                         
-                        # 如果是平仓建议，使用更醒目的日志（快速获利场景）
-                        if action == 'close':
-                            # 判断是否为快速获利场景
-                            profit_pct = adjustment.get('profit_pct', 0)
-                            is_profit = profit_pct > 0
-                            profit_info = f"盈利{profit_pct:.2f}%" if is_profit else f"亏损{abs(profit_pct):.2f}%"
-                            
-                            self.logger.warning(
-                                f"🚨 [AI建议平仓{source_tag}] {symbol}: AI分析建议立即平仓（快速获利）！"
-                                f"原因: {reason} | 当前盈亏: {profit_info} | 调整比例: {adjust_size_str}"
-                            )
-                            if is_profit:
-                                self.logger.info(
-                                    f"💰 [快速获利] {symbol}: AI建议锁定利润，立即平仓 | 盈利: {profit_pct:.2f}%"
-                                )
-                        else:
-                            self.logger.info(
-                                f"[AI仓位调整{source_tag}] {symbol}: 建议{action}, "
-                                f"调整比例: {adjust_size_str}, "
-                                f"原因: {reason}"
-                            )
+                        self.logger.info(
+                            f"[AI仓位调整{source_tag}] {symbol}: 建议{action}, "
+                            f"调整比例: {adjust_size_str}, "
+                            f"原因: {reason}"
+                        )
                         
                         # 生成调整决策
                         if action == 'close':
                             trigger_price = adjustment.get('stop_loss_price') or adjustment.get('take_profit_price') \
                                 or symbol_market_data.get('price', 0)
-                            # 传递adjustment信息，以便标记为DeepSeek决策
                             decision = await self._create_close_decision(
-                                symbol, position, reason or 'AI建议平仓', symbol_market_data, trigger_price,
-                                adjustment=adjustment  # 传递adjustment以便识别AI建议
+                                symbol, position, reason or 'AI建议平仓', symbol_market_data, trigger_price
                             )
-                            if decision:
-                                self.logger.warning(
-                                    f"⚡ [立即执行AI平仓] {symbol}: 正在执行AI建议的平仓操作..."
-                                )
                         else:
                             decision = await self._create_adjustment_decision(
                                 symbol, position, adjustment, symbol_market_data
                             )
                         
                         if decision:
-                            # 执行调整（如果是平仓，立即执行，不等待）
-                            # 对于AI审计仓位的平仓操作，立即执行以快速获利
-                            if action == 'close':
-                                profit_pct = adjustment.get('profit_pct', 0)
-                                is_profit = profit_pct > 0
-                                profit_info = f"盈利{profit_pct:.2f}%" if is_profit else f"亏损{abs(profit_pct):.2f}%"
-                                
-                                self.logger.warning(
-                                    f"⚡ [立即执行AI平仓] {symbol}: 正在执行AI建议的平仓操作（快速获利）... | 当前盈亏: {profit_info}"
-                                )
-                            
+                            # 执行调整
                             await self._execute_trades([decision])
-                            
-                            if action == 'close':
-                                profit_pct = adjustment.get('profit_pct', 0)
-                                is_profit = profit_pct > 0
-                                profit_info = f"盈利{profit_pct:.2f}%" if is_profit else f"亏损{abs(profit_pct):.2f}%"
-                                
-                                self.logger.warning(
-                                    f"✅ [AI平仓执行完成] {symbol}: AI建议的平仓操作已执行 | 锁定盈亏: {profit_info}"
-                                )
-                                if is_profit:
-                                    self.logger.info(f"💰 [快速获利成功] {symbol}: 已成功锁定利润 {profit_pct:.2f}%")
                             
                             if max_adjustments and not is_risk_event:
                                 adjustments_executed += 1
@@ -1891,12 +1892,7 @@ class TradingEngine:
                 else:
                     decision_action = 'close_short'
                 
-                # 检查是否为AI建议（来自DeepSeek）
-                is_ai_recommendation = 'AI建议' in adjustment.get('reason', '') or adjustment.get('analysis', {})
-                reason = adjustment.get('reason', 'AI建议平仓')
-                
-                # 创建决策
-                decision = TradingDecision(
+                return TradingDecision(
                     symbol=symbol,
                     action=decision_action,
                     position_size=1.0,  # 全部平仓
@@ -1905,28 +1901,10 @@ class TradingEngine:
                     stop_loss=None,
                     take_profit=None,
                     confidence=adjustment.get('confidence', 0.8),
-                    reasoning=reason,
+                    reasoning=adjustment.get('reason', 'AI建议平仓'),
                     signals=[],
-                    risk_assessment={'passed': True}  # 平仓操作必须执行，跳过风险检查
+                    risk_assessment={}
                 )
-                
-                # 如果是AI建议，标记为DeepSeek决策，并添加AI分析信号
-                if is_ai_recommendation:
-                    decision._is_deepseek_decision = True
-                    # 添加AI分析信号，以便被识别为DeepSeek决策
-                    ai_analysis = adjustment.get('analysis', {})
-                    if ai_analysis:
-                        decision.signals = [{
-                            'source': 'ai',
-                            'data': {
-                                'analysis': ai_analysis,
-                                'direction': 'close',
-                                'recommendation': ai_analysis.get('recommendation', '平仓')
-                            }
-                        }]
-                    self.logger.info(f"✅ [AI审计仓位] {symbol}: 标记为DeepSeek决策，将跳过常规检查")
-                
-                return decision
             elif action == 'add':
                 # 加仓
                 if position_side == 'long':
@@ -1934,12 +1912,7 @@ class TradingEngine:
                 else:
                     decision_action = 'short'
                 
-                # 检查是否为AI建议（来自DeepSeek）
-                is_ai_recommendation = 'AI建议' in adjustment.get('reason', '') or adjustment.get('analysis', {})
-                reason = adjustment.get('reason', 'AI建议加仓')
-                
-                # 创建决策
-                decision = TradingDecision(
+                return TradingDecision(
                     symbol=symbol,
                     action=decision_action,
                     position_size=adjust_size,
@@ -1948,28 +1921,10 @@ class TradingEngine:
                     stop_loss=adjustment.get('stop_loss_price'),
                     take_profit=adjustment.get('take_profit_price'),
                     confidence=adjustment.get('confidence', 0.7),
-                    reasoning=reason,
+                    reasoning=adjustment.get('reason', 'AI建议加仓'),
                     signals=[],
                     risk_assessment={}
                 )
-                
-                # 如果是AI建议，标记为DeepSeek决策
-                if is_ai_recommendation:
-                    decision._is_deepseek_decision = True
-                    # 添加AI分析信号
-                    ai_analysis = adjustment.get('analysis', {})
-                    if ai_analysis:
-                        decision.signals = [{
-                            'source': 'ai',
-                            'data': {
-                                'analysis': ai_analysis,
-                                'direction': 'add',
-                                'recommendation': ai_analysis.get('recommendation', '加仓')
-                            }
-                        }]
-                    self.logger.info(f"✅ [AI审计仓位] {symbol}: 标记为DeepSeek决策，将跳过常规检查")
-                
-                return decision
             elif action == 'reduce':
                 # 减仓（通过部分平仓实现）
                 if position_side == 'long':
@@ -1977,12 +1932,7 @@ class TradingEngine:
                 else:
                     decision_action = 'close_short'
                 
-                # 检查是否为AI建议（来自DeepSeek）
-                is_ai_recommendation = 'AI建议' in adjustment.get('reason', '') or adjustment.get('analysis', {})
-                reason = adjustment.get('reason', 'AI建议减仓')
-                
-                # 创建决策
-                decision = TradingDecision(
+                return TradingDecision(
                     symbol=symbol,
                     action=decision_action,
                     position_size=adjust_size,  # 减仓比例
@@ -1991,28 +1941,10 @@ class TradingEngine:
                     stop_loss=adjustment.get('stop_loss_price'),
                     take_profit=adjustment.get('take_profit_price'),
                     confidence=adjustment.get('confidence', 0.7),
-                    reasoning=reason,
+                    reasoning=adjustment.get('reason', 'AI建议减仓'),
                     signals=[],
-                    risk_assessment={'passed': True}  # 减仓操作必须执行，跳过风险检查
+                    risk_assessment={}
                 )
-                
-                # 如果是AI建议，标记为DeepSeek决策
-                if is_ai_recommendation:
-                    decision._is_deepseek_decision = True
-                    # 添加AI分析信号
-                    ai_analysis = adjustment.get('analysis', {})
-                    if ai_analysis:
-                        decision.signals = [{
-                            'source': 'ai',
-                            'data': {
-                                'analysis': ai_analysis,
-                                'direction': 'reduce',
-                                'recommendation': ai_analysis.get('recommendation', '减仓')
-                            }
-                        }]
-                    self.logger.info(f"✅ [AI审计仓位] {symbol}: 标记为DeepSeek决策，将跳过常规检查")
-                
-                return decision
             
             return None
             
@@ -2022,7 +1954,7 @@ class TradingEngine:
     
     async def _create_close_decision(self, symbol: str, position: Dict[str, Any],
                                     reason: str, market_data: Dict[str, Any],
-                                    trigger_price: float, adjustment: Optional[Dict[str, Any]] = None) -> Optional[Any]:
+                                    trigger_price: float) -> Optional[Any]:
         """
         创建平仓决策（止损/止盈）
         
@@ -2041,24 +1973,6 @@ class TradingEngine:
             
             # 兼容不同的持仓方向格式
             position_side_raw = position.get('side', 'long')
-            # 检查实际持仓的 posSide（可能是 'net', 'long', 'short'）
-            actual_pos_side = position.get('posSide', None)
-            
-            # 如果 posSide 不存在，尝试从其他字段推断
-            if actual_pos_side is None:
-                # 检查是否有其他字段可以推断
-                if 'posSide' in position:
-                    actual_pos_side = position['posSide']
-                else:
-                    # 默认使用 'net'（单向持仓模式）
-                    actual_pos_side = 'net'
-                    self.logger.warning(f"⚠️ {symbol}: 持仓数据中没有 posSide 字段，使用默认值 'net'")
-            
-            self.logger.info(
-                f"🔍 [平仓决策] {symbol}: position数据 keys={list(position.keys())}, "
-                f"side={position_side_raw}, posSide={actual_pos_side}"
-            )
-            
             if position_side_raw == 'buy':
                 position_side = 'long'
             elif position_side_raw == 'sell':
@@ -2066,60 +1980,24 @@ class TradingEngine:
             else:
                 position_side = position_side_raw
             
-            # 如果实际持仓是 'net' 模式，平仓时也应该使用 'net'
-            # 否则使用具体的 'long' 或 'short'
-            if actual_pos_side == 'net' or actual_pos_side is None or actual_pos_side == '':
-                # 单向持仓模式，使用 'net'
-                pos_side_for_order = 'net'
-                self.logger.info(f"✅ {symbol}: 使用 'net' 模式平仓（单向持仓）")
-            else:
-                # 双向持仓模式，使用具体的方向
-                pos_side_for_order = position_side
-                self.logger.info(f"✅ {symbol}: 使用 '{pos_side_for_order}' 模式平仓（双向持仓）")
-            
             if position_side == 'long':
                 decision_action = 'close_long'
             else:
                 decision_action = 'close_short'
             
-            # 检查是否为AI建议（来自DeepSeek审计仓位）
-            is_ai_recommendation = False
-            if adjustment:
-                is_ai_recommendation = 'AI建议' in reason or adjustment.get('analysis', {})
-            elif 'AI建议' in reason:
-                is_ai_recommendation = True
-            
-            # 创建决策
-            decision = TradingDecision(
+            return TradingDecision(
                 symbol=symbol,
                 action=decision_action,
                 position_size=1.0,  # 全部平仓
-                position_side=pos_side_for_order,  # 使用正确的 posSide（可能是 'net'）
+                position_side=position_side,
                 price=trigger_price,
                 stop_loss=None,
                 take_profit=None,
-                confidence=0.9 if not adjustment else adjustment.get('confidence', 0.9),
-                reasoning=f'{reason}触发：触发价格{trigger_price:.2f}' if not is_ai_recommendation else reason,
+                confidence=0.9,  # 止损止盈触发时，信心度很高
+                reasoning=f'{reason}触发：触发价格{trigger_price:.2f}',
                 signals=[],
-                risk_assessment={'passed': True}  # 止损/止盈必须执行，跳过风险检查
+                risk_assessment={}
             )
-            
-            # 如果是AI建议，标记为DeepSeek决策
-            if is_ai_recommendation:
-                decision._is_deepseek_decision = True
-                # 添加AI分析信号
-                if adjustment and adjustment.get('analysis'):
-                    decision.signals = [{
-                        'source': 'ai',
-                        'data': {
-                            'analysis': adjustment.get('analysis', {}),
-                            'direction': 'close',
-                            'recommendation': adjustment.get('analysis', {}).get('recommendation', '平仓')
-                        }
-                    }]
-                self.logger.info(f"✅ [AI审计仓位] {symbol}: 标记为DeepSeek决策，将跳过常规检查")
-            
-            return decision
             
         except Exception as e:
             self.logger.error(f"创建平仓决策失败 {symbol}: {e}")
@@ -2127,33 +2005,27 @@ class TradingEngine:
     
     def _is_closing_position(self, symbol: str, action: str) -> bool:
         """判断是否为平仓操作（支持合约交易）"""
-        # 最简单直接的判断：如果 action 是 close_long 或 close_short，就是平仓
-        if action in ['close_long', 'close_short']:
-            self.logger.debug(f"✅ [平仓判断] {symbol}: action={action} 是平仓操作")
-            return True
-        
-        # 其他情况需要检查当前持仓
         current_position = self.position_manager.get_position(symbol)
         
         if not current_position or current_position.get('size', 0) == 0:
-            self.logger.debug(f"❌ [平仓判断] {symbol}: action={action}, 无持仓，不是平仓")
             return False
         
         current_side = current_position.get('side', 'none')
         
+        # 合约交易：close_long平多，close_short平空
+        if action in ['close_long', 'close_short']:
+            return True
+        
         # 现货交易：如果当前是多仓且操作为卖出，或当前是空仓且操作为买入，则为平仓
         if (current_side == 'buy' and action == 'sell') or \
            (current_side == 'sell' and action == 'buy'):
-            self.logger.debug(f"✅ [平仓判断] {symbol}: action={action}, current_side={current_side} 是平仓操作")
             return True
         
         # 合约交易：如果当前是多仓且操作为做空，或当前是空仓且操作为做多，则为先平仓再开仓
         if (current_side == 'long' and action == 'short') or \
            (current_side == 'short' and action == 'long'):
-            self.logger.debug(f"✅ [平仓判断] {symbol}: action={action}, current_side={current_side} 是平仓操作")
             return True
         
-        self.logger.debug(f"❌ [平仓判断] {symbol}: action={action}, current_side={current_side} 不是平仓操作")
         return False
     
     async def _update_positions(self):
@@ -2349,14 +2221,9 @@ class TradingEngine:
                         # 等待平仓完成（给一点时间让订单成交）
                         await asyncio.sleep(2)
                         
-                        # 等待1分钟后再生成下一次交易计划
+                        # 生成下一次交易计划
                         self.logger.info(
-                            f"📋 [生成下一次计划] {symbol}: 强制平仓后，等待1分钟后生成下一次交易计划"
-                        )
-                        await asyncio.sleep(60)
-                        
-                        self.logger.info(
-                            f"⏰ [延迟计划触发] {symbol}: 1分钟等待完成，开始生成新的交易计划"
+                            f"📋 [生成下一次计划] {symbol}: 强制平仓后，立即生成下一次交易计划"
                         )
                         
                         # 重新生成信号和决策
@@ -2376,7 +2243,8 @@ class TradingEngine:
                                 # 生成决策
                                 new_decisions = await self._make_decisions(
                                     {symbol: symbol_market_data},
-                                    filtered_signals
+                                    filtered_signals,
+                                    allowed_symbols={symbol}
                                 )
                                 
                                 if new_decisions:
@@ -2440,85 +2308,151 @@ class TradingEngine:
     
     async def _ai_position_review_loop(self):
         """
-        AI持仓审查循环：每分钟检查一次持仓，如果AI分析建议平仓（包括快速获利），立即执行平仓
-        目的：快速获利，让AI在盈利时也能及时建议平仓以锁定利润
+        AI持仓审查循环：按配置的间隔触发AI分析，动态调整仓位
         """
         if not self.ai_review_enabled:
             return
         
-        self.logger.info(f"🤖 [AI持仓审查] 任务启动，每分钟检查一次持仓，AI建议平仓（包括快速获利）时立即执行")
+        self.logger.info(f"AI仓位审查任务启动，检查间隔: {self.ai_review_interval}秒")
         
         try:
             while self.is_running:
                 cycle_start = datetime.now()
                 
                 try:
-                    # 从API实时获取最新持仓数据
-                    if self.okx_client is None:
-                        self.okx_client = await get_okx_client()
-                    positions_result = await self.okx_client.async_get_positions()
+                    positions = self.position_manager.get_all_positions()
+                    symbols = [
+                        symbol for symbol, pos in positions.items()
+                        if pos.get('size', 0) > 0
+                    ]
                     
-                    # 处理不同的返回格式
-                    if isinstance(positions_result, dict):
-                        if positions_result.get('code') != '0':
-                            self.logger.warning("[AI持仓审查] 获取持仓失败，跳过本次检查")
-                        else:
-                            positions_list = positions_result.get('data', [])
-                    elif isinstance(positions_result, list):
-                        positions_list = positions_result
+                    if not symbols:
+                        self.logger.debug("[AI仓位审查] 当前无持仓，跳过本次检查")
                     else:
-                        positions_list = []
-                    
-                    if not positions_list:
-                        self.logger.debug("[AI持仓审查] 当前无持仓，跳过本次检查")
-                    else:
-                        # 提取有持仓的交易对
-                        symbols_with_positions = []
-                        for pos in positions_list:
-                            if pos.get('instId'):
-                                pos_str = pos.get('pos', '0')
-                                position_size = abs(float(pos_str)) if pos_str else 0
-                                if position_size > 0:
-                                    symbols_with_positions.append(pos.get('instId'))
-                        
-                        if symbols_with_positions:
-                            self.logger.info(
-                                f"🔍 [AI持仓审查] 开始检查 {len(symbols_with_positions)} 个持仓: {', '.join(symbols_with_positions)}"
-                            )
-                            
-                            # 获取市场数据
-                            market_data = await self._collect_market_data(symbols_with_positions)
+                        market_data = self._get_cached_market_data(
+                            symbols=symbols,
+                            max_age_seconds=max(5, self.ai_review_interval)
+                        )
+                        if market_data is None:
+                            market_data = await self._collect_market_data(symbols)
                             if market_data:
-                                self._update_market_data_cache(market_data)
-                                
-                                # ⚡ 执行AI持仓分析和调整（如果AI建议平仓，立即执行）
-                                # 不限制调整次数，确保平仓能立即执行，包括快速获利的情况
-                                await self._check_position_adjustments(
-                                    market_data,
-                                    enable_ai_analysis=True,  # 启用AI分析，让AI判断是否应该平仓获利
-                                    max_adjustments=None,  # 不限制调整次数，确保平仓能立即执行
-                                    source="ai_review_minute_快速获利"  # 标记为快速获利审查
-                                )
-                                self.logger.info(f"✅ [AI持仓审查] 完成本次检查，已分析 {len(symbols_with_positions)} 个持仓")
-                            else:
-                                self.logger.warning("[AI持仓审查] 市场数据为空，跳过本次检查")
+                                self._update_market_data_cache(market_data, symbols=list(market_data.keys()))
+                        if market_data:
+                            await self._check_position_adjustments(
+                                market_data,
+                                enable_ai_analysis=True,
+                                max_adjustments=self.ai_review_max_adjustments,
+                                source="ai_review"
+                            )
                         else:
-                            self.logger.debug("[AI持仓审查] 当前无有效持仓，跳过本次检查")
-                            
+                            self.logger.debug("[AI仓位审查] 市场数据为空，跳过本次检查")
                 except Exception as loop_err:
-                    self.logger.error(f"❌ [AI持仓审查] 执行失败: {loop_err}", exc_info=True)
+                    self.logger.error(f"AI仓位审查执行失败: {loop_err}", exc_info=True)
                 
-                # 计算本次循环耗时，确保每分钟执行一次（精确控制）
                 elapsed = (datetime.now() - cycle_start).total_seconds()
-                sleep_time = max(60.0 - elapsed, 1.0)  # 确保间隔为60秒（1分钟），最少1秒
-                if elapsed < 60:
-                    self.logger.debug(f"⏰ [AI持仓审查] 本次检查耗时{elapsed:.2f}秒，等待{sleep_time:.2f}秒后执行下一次检查")
+                sleep_time = max(self.ai_review_interval - elapsed, 1)
                 await asyncio.sleep(sleep_time)
         
         except asyncio.CancelledError:
             self.logger.info("AI仓位审查任务已取消")
         except Exception as e:
             self.logger.error(f"AI仓位审查任务异常: {e}", exc_info=True)
+    
+    async def _deepseek_position_review_loop(self):
+        """
+        DeepSeek持仓复查：有持仓时每分钟调用DeepSeek分析，必要时立即平仓
+        """
+        if not self.deepseek_review_enabled:
+            return
+        
+        self.logger.info(
+            f"DeepSeek持仓复查任务启动，检查间隔: {self.deepseek_review_interval}秒"
+        )
+        
+        try:
+            while self.is_running:
+                cycle_start = datetime.now()
+                try:
+                    positions = self.position_manager.get_all_positions()
+                    active_symbols = [
+                        symbol for symbol, pos in positions.items()
+                        if pos.get('size', 0) > 0
+                    ]
+                    
+                    if not active_symbols:
+                        await asyncio.sleep(self.deepseek_review_interval)
+                        continue
+                    
+                    # 限制单次处理数量，避免过度调用
+                    active_symbols = active_symbols[:self.deepseek_review_max_symbols]
+                    
+                    market_data = self._get_cached_market_data(
+                        symbols=active_symbols,
+                        max_age_seconds=max(5, self.deepseek_review_interval)
+                    )
+                    if market_data is None or any(sym not in market_data for sym in active_symbols):
+                        market_data = await self._collect_market_data(active_symbols)
+                        if market_data:
+                            self._update_market_data_cache(
+                                market_data,
+                                symbols=list(market_data.keys())
+                            )
+                    
+                    await self._evaluate_positions_with_deepseek(
+                        active_symbols,
+                        market_data or {},
+                        positions
+                    )
+                    
+                except Exception as loop_error:
+                    self.logger.error(
+                        f"DeepSeek持仓复查执行失败: {loop_error}",
+                        exc_info=True
+                    )
+                
+                elapsed = (datetime.now() - cycle_start).total_seconds()
+                sleep_time = max(self.deepseek_review_interval - elapsed, 1)
+                await asyncio.sleep(sleep_time)
+        
+        except asyncio.CancelledError:
+            self.logger.info("DeepSeek持仓复查任务已取消")
+        except Exception as e:
+            self.logger.error(f"DeepSeek持仓复查任务异常: {e}", exc_info=True)
+    
+    async def _evaluate_positions_with_deepseek(self, symbols: List[str],
+                                                market_data: Dict[str, Dict[str, Any]],
+                                                positions: Dict[str, Dict[str, Any]]):
+        """使用DeepSeek复查持仓，若AI建议离场则立即平仓"""
+        if not symbols:
+            return
+        
+        for symbol in symbols:
+            position = positions.get(symbol) or {}
+            if position.get('size', 0) <= 0:
+                continue
+            symbol_market_data = market_data.get(symbol)
+            if not symbol_market_data:
+                self.logger.debug(f"[DeepSeek复查] {symbol} 缺少市场数据，跳过")
+                continue
+            try:
+                decision = self.decision_engine.make_decision(
+                    symbol,
+                    symbol_market_data,
+                    position,
+                    bypass_frequency=True
+                )
+                if decision and decision.action in ('close_long', 'close_short'):
+                    decision.reasoning = (decision.reasoning or '') + " | DeepSeek复查触发"
+                    self.logger.info(
+                        f"[DeepSeek复查] {symbol}: {decision.action} ({decision.position_side}) "
+                        f"| 信心度={decision.confidence:.2f}"
+                    )
+                    await self._execute_trades([decision])
+            except Exception as e:
+                self.logger.error(
+                    f"[DeepSeek复查] {symbol} 处理失败: {e}",
+                    exc_info=True
+                )
     
     async def _check_pending_orders_timeout(self, market_data: Dict[str, Dict[str, Any]]):
         """
@@ -2642,7 +2576,8 @@ class TradingEngine:
                             # 生成决策
                             new_decisions = await self._make_decisions(
                                 {symbol: symbol_market_data},
-                                filtered_signals
+                                filtered_signals,
+                                allowed_symbols={symbol}
                             )
                             
                             if new_decisions:
@@ -2805,6 +2740,7 @@ class TradingEngine:
                     )
                     self.trade_count_since_optimization += 1
                     self._schedule_prompt_optimization()
+                    self._log_win_profit_summary(symbol)
                 except Exception as err:
                     self.logger.error(f"写入交易结果失败 {symbol}: {err}")
             
@@ -2812,12 +2748,20 @@ class TradingEngine:
                 f"交易收益: {trade_profit.symbol} {trade_profit.trade_id}, "
                 f"收益={trade_profit.net_profit:.2f}, 收益率={trade_profit.return_rate:.2f}%"
             )
-            
-            # 写入交易记录日志
-            self._write_trade_log(trade_info, order, trade_profit)
         
         except Exception as e:
             self.logger.error(f"计算交易收益失败: {e}")
+    
+    def _log_win_profit_summary(self, symbol: Optional[str] = None):
+        """记录最新的胜率与盈利统计"""
+        if not getattr(self, "win_profit_tracker", None):
+            return
+        try:
+            summary = self.win_profit_tracker.compute_summary()
+            tag = symbol or ""
+            self.win_profit_tracker.log_summary(summary, tag=tag)
+        except Exception as err:
+            self.logger.debug(f"更新胜率统计失败: {err}")
     
     async def _cancel_all_orders(self):
         """取消所有未完成订单"""
@@ -2845,107 +2789,6 @@ class TradingEngine:
         """禁用交易"""
         self.trading_enabled = False
         self.logger.info("交易已禁用")
-    
-    def _write_trade_log_entry(self, symbol: str, decision, order, entry_price: float, entry_time: datetime):
-        """
-        记录开仓信息到交易日志
-        
-        Args:
-            symbol: 交易对
-            decision: 交易决策
-            order: 订单对象
-            entry_price: 开仓价
-            entry_time: 开仓时间
-        """
-        try:
-            # 生成日志文件名：交易对_日期_时间_开仓.log
-            timestamp = entry_time.strftime('%Y%m%d_%H%M%S')
-            log_file = self.trade_log_dir / f"{symbol}_{timestamp}_ENTRY.json"
-            
-            trade_log = {
-                'symbol': symbol,
-                'action': 'ENTRY',
-                'timestamp': entry_time.isoformat(),
-                'order_id': order.order_id,
-                'position_side': decision.position_side,
-                'entry_price': float(entry_price),
-                'quantity': float(order.filled_size),
-                'confidence': float(decision.confidence) if decision.confidence else 0.0,
-                'entry_reason': decision.reasoning or 'open',
-                'decision_action': decision.action,
-                'position_size_pct': float(decision.position_size) if decision.position_size else 0.0,
-            }
-            
-            # 如果有AI分析，也记录
-            if hasattr(decision, 'signals') and decision.signals:
-                for signal in decision.signals:
-                    if signal.get('source') == 'ai':
-                        trade_log['ai_analysis'] = signal.get('data', {})
-                        break
-            
-            # 写入JSON文件
-            with open(log_file, 'w', encoding='utf-8') as f:
-                json.dump(trade_log, f, indent=2, ensure_ascii=False)
-            
-            self.logger.info(f"📝 [交易日志] 开仓记录已保存: {log_file}")
-            
-        except Exception as e:
-            self.logger.error(f"写入开仓日志失败 {symbol}: {e}")
-    
-    def _write_trade_log(self, trade_info: Dict[str, Any], order, trade_profit):
-        """
-        记录完整交易记录到日志文件（平仓时）
-        
-        Args:
-            trade_info: 交易信息
-            order: 订单对象
-            trade_profit: 交易收益对象
-        """
-        try:
-            symbol = order.symbol
-            entry_time = trade_info.get('entry_time') if trade_info else (order.created_at or datetime.now())
-            
-            # 生成日志文件名：交易对_日期_时间_完整.log
-            timestamp = entry_time.strftime('%Y%m%d_%H%M%S')
-            log_file = self.trade_log_dir / f"{symbol}_{timestamp}_COMPLETE.json"
-            
-            exit_time = trade_info.get('exit_time') if trade_info else (order.executed_at or datetime.now())
-            holding_duration = (exit_time - entry_time).total_seconds() / 60 if entry_time else 0  # 分钟
-            
-            trade_log = {
-                'symbol': symbol,
-                'action': 'COMPLETE',
-                'trade_id': order.order_id,
-                'entry_time': entry_time.isoformat() if isinstance(entry_time, datetime) else str(entry_time),
-                'exit_time': exit_time.isoformat() if isinstance(exit_time, datetime) else str(exit_time),
-                'holding_duration_minutes': round(holding_duration, 2),
-                'position_side': trade_info.get('position_side', 'long') if trade_info else 'long',
-                'entry_price': float(trade_info.get('entry_price', 0)) if trade_info else 0.0,
-                'exit_price': float(trade_info.get('exit_price', 0)) if trade_info else float(order.average_price or order.filled_price or 0),
-                'quantity': float(trade_info.get('position_size', 0)) if trade_info else float(order.filled_size or 0),
-                'gross_profit': float(trade_profit.gross_profit) if trade_profit else 0.0,
-                'net_profit': float(trade_profit.net_profit) if trade_profit else 0.0,
-                'return_rate_pct': float(trade_profit.return_rate) if trade_profit else 0.0,
-                'fees': float(trade_profit.fees) if trade_profit else 0.0,
-                'entry_reason': trade_info.get('entry_reason', 'open') if trade_info else 'open',
-                'exit_reason': trade_info.get('exit_reason', 'close') if trade_info else 'close',
-            }
-            
-            # 如果有AI分析，也记录
-            if trade_info and trade_info.get('ai_analysis'):
-                trade_log['ai_analysis'] = trade_info.get('ai_analysis')
-            
-            # 写入JSON文件
-            with open(log_file, 'w', encoding='utf-8') as f:
-                json.dump(trade_log, f, indent=2, ensure_ascii=False)
-            
-            self.logger.info(
-                f"📝 [交易日志] 完整交易记录已保存: {log_file} | "
-                f"盈亏={trade_log['net_profit']:.2f} USDT ({trade_log['return_rate_pct']:.2f}%)"
-            )
-            
-        except Exception as e:
-            self.logger.error(f"写入交易日志失败 {order.symbol if order else 'unknown'}: {e}")
 
 
 if __name__ == "__main__":
