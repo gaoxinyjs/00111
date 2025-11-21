@@ -133,6 +133,10 @@ class TradingEngine:
             self.top_selection_max_candidates = max(int(self.top_selection_cfg.get('max_candidates', 5)), 1)
         except (TypeError, ValueError):
             self.top_selection_max_candidates = 5
+        try:
+            self.top_selection_priority_confidence = float(self.top_selection_cfg.get('priority_confidence', 0.65))
+        except (TypeError, ValueError):
+            self.top_selection_priority_confidence = 0.65
         self.top_selection_last_run: Optional[datetime] = None
         
         # 注册数据回调
@@ -220,42 +224,64 @@ class TradingEngine:
         if not opening_candidates:
             return decisions
         
-        best_decision = None
-        best_score = -1.0
+        priority_candidates: List[tuple] = []
+        fallback_candidates: List[tuple] = []
         skipped_symbols: List[str] = []
+        threshold = getattr(self, 'top_selection_priority_confidence', 0.65)
         
         for decision in opening_candidates:
             symbol = decision.symbol
             if allowed and symbol not in allowed:
                 skipped_symbols.append(symbol)
                 continue
-            if not getattr(decision, '_is_deepseek_decision', False):
-                skipped_symbols.append(symbol)
-                continue
             score = ai_confidence_map.get(symbol, getattr(decision, 'confidence', 0.0) or 0.0)
-            if score > best_score:
-                best_score = score
-                best_decision = decision
+            if getattr(decision, '_is_deepseek_decision', False) and score >= threshold:
+                priority_candidates.append((score, decision))
+            else:
+                fallback_candidates.append((score, decision))
+
+        def pick_best(candidates: List[tuple]):
+            if not candidates:
+                return None, [], -1.0
+            best_score, best_decision = max(candidates, key=lambda item: item[0])
+            dropped_symbols = [dec.symbol for _, dec in candidates if dec is not best_decision]
+            return best_decision, dropped_symbols, best_score
         
-        if not best_decision:
-            if skipped_symbols:
+        priority_decision, priority_dropped, priority_score = pick_best(priority_candidates)
+        if priority_decision:
+            if priority_dropped:
                 self.logger.info(
-                    f"[TopSelection] 未找到满足条件的 DeepSeek 开仓信号，"
-                    f"跳过币种: {', '.join(sorted(set(skipped_symbols)))}"
+                    f"[TopSelection] DeepSeek优先模式：执行 {priority_decision.symbol} "
+                    f"(信心度 {priority_score:.2f})，其余候选丢弃: {', '.join(sorted(set(priority_dropped)))}"
                 )
-            return closing_decisions
+            else:
+                self.logger.info(
+                    f"[TopSelection] DeepSeek优先模式：执行 {priority_decision.symbol} "
+                    f"(信心度 {priority_score:.2f})"
+                )
+            return closing_decisions + [priority_decision]
         
-        dropped = [
-            decision.symbol for decision in opening_candidates
-            if decision is not best_decision
-        ]
-        if dropped:
+        fallback_decision, fallback_dropped, fallback_score = pick_best(fallback_candidates)
+        if fallback_decision:
+            if fallback_dropped:
+                self.logger.info(
+                    f"[TopSelection] DeepSeek信心度低于阈值({threshold:.2f})，降级执行 "
+                    f"{fallback_decision.symbol} (信心度 {fallback_score:.2f})，"
+                    f"其余候选丢弃: {', '.join(sorted(set(fallback_dropped)))}"
+                )
+            else:
+                self.logger.info(
+                    f"[TopSelection] DeepSeek信心度低于阈值({threshold:.2f})，"
+                    f"降级执行 {fallback_decision.symbol} (信心度 {fallback_score:.2f})"
+                )
+            return closing_decisions + [fallback_decision]
+        
+        if skipped_symbols:
             self.logger.info(
-                f"[TopSelection] 仅执行 {best_decision.symbol} (信心度 {best_score:.2f})，"
-                f"其余候选丢弃: {', '.join(sorted(set(dropped)))}"
+                f"[TopSelection] 未找到满足条件的开仓信号，"
+                f"跳过币种: {', '.join(sorted(set(skipped_symbols)))}"
             )
-        
-        return closing_decisions + [best_decision]
+        return closing_decisions
 
     def _seconds_until_next_interval(self, interval_seconds: int) -> float:
         """计算距离下一个整数间隔的秒数（按UTC时间对齐，每15分钟整点）"""
