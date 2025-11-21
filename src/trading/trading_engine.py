@@ -6,7 +6,7 @@
 """
 import asyncio
 from copy import deepcopy
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 from datetime import datetime, timezone
 from ..core.config_manager import get_config_manager
 from ..core.logger import get_logger
@@ -119,6 +119,38 @@ class TradingEngine:
         except (TypeError, ValueError):
             self.ai_review_max_adjustments = None
         self.ai_review_task = None
+
+        # Top-N DeepSeek 策略配置
+        self.top_selection_cfg = self.config_mgr.get_config('trading', 'top_selection', {}) or {}
+        self.top_selection_enabled = bool(self.top_selection_cfg.get('enabled', False))
+        symbols_cfg = self.top_selection_cfg.get('symbols') or []
+        self.top_selection_symbols = [str(sym).strip() for sym in symbols_cfg if sym]
+        try:
+            self.top_selection_interval = max(int(self.top_selection_cfg.get('interval', 900)), 60)
+        except (TypeError, ValueError):
+            self.top_selection_interval = 900
+        try:
+            self.top_selection_max_candidates = max(int(self.top_selection_cfg.get('max_candidates', 5)), 1)
+        except (TypeError, ValueError):
+            self.top_selection_max_candidates = 5
+        try:
+            self.top_selection_priority_confidence = float(self.top_selection_cfg.get('priority_confidence', 0.65))
+        except (TypeError, ValueError):
+            self.top_selection_priority_confidence = 0.65
+        self.top_selection_last_run: Optional[datetime] = None
+
+        # DeepSeek持仓复查配置
+        review_cfg = self.config_mgr.get_config('trading', 'deepseek_position_review', {}) or {}
+        self.deepseek_review_enabled = bool(review_cfg.get('enabled', False))
+        try:
+            self.deepseek_review_interval = max(int(review_cfg.get('interval', 60)), 10)
+        except (TypeError, ValueError):
+            self.deepseek_review_interval = 60
+        try:
+            self.deepseek_review_max_symbols = max(int(review_cfg.get('max_symbols_per_cycle', 10)), 1)
+        except (TypeError, ValueError):
+            self.deepseek_review_max_symbols = 10
+        self.deepseek_review_task: Optional[asyncio.Task] = None
         
         # 注册数据回调
         self._register_callbacks()
@@ -132,6 +164,156 @@ class TradingEngine:
         """行情数据更新回调"""
         symbol = ticker_data.get('symbol')
         self.logger.debug(f"行情更新: {symbol} = {ticker_data.get('price')}")
+
+    def _get_active_selection_symbols(self) -> List[str]:
+        """返回当前策略需要重点分析的币种列表"""
+        if not self.top_selection_enabled or not self.top_selection_symbols:
+            return list(self.pair_config_map.keys())
+        ordered_unique: List[str] = []
+        for sym in self.top_selection_symbols:
+            if sym and sym not in ordered_unique:
+                ordered_unique.append(sym)
+        if not ordered_unique:
+            return list(self.pair_config_map.keys())
+        return ordered_unique[:self.top_selection_max_candidates]
+
+    def _build_ai_confidence_map(self, signals: List) -> Dict[str, float]:
+        """从信号列表中提取 DeepSeek 信心度"""
+        confidence_map: Dict[str, float] = {}
+        if not signals:
+            return confidence_map
+        for signal in signals:
+            try:
+                if signal.source not in ('ai', 'ai_analysis'):
+                    continue
+                confidence = self._extract_ai_confidence_from_signal(signal)
+                if confidence <= 0:
+                    continue
+                prev = confidence_map.get(signal.symbol, 0.0)
+                if confidence > prev:
+                    confidence_map[signal.symbol] = confidence
+            except Exception:
+                continue
+        return confidence_map
+
+    def _extract_ai_confidence_from_signal(self, signal) -> float:
+        """从 DeepSeek 信号结构中解析信心度"""
+        data = getattr(signal, 'data', {}) or {}
+        if isinstance(data, dict):
+            analysis = data.get('analysis') or data.get('metadata', {}).get('analysis') or {}
+        else:
+            analysis = {}
+        confidence = (
+            data.get('confidence')
+            or analysis.get('confidence')
+            or data.get('strength')
+            or getattr(signal, 'strength', 0.0)
+        )
+        try:
+            if isinstance(confidence, str):
+                confidence = confidence.strip().replace('%', '')
+            return float(confidence)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _filter_decisions_by_top_strategy(self, decisions: List, ai_confidence_map: Dict[str, float],
+                                          allowed_symbols: Optional[Set[str]]) -> List:
+        """
+        仅保留 Top-N 策略要求的开仓决策，始终允许平仓/风险动作
+        """
+        if not self.top_selection_enabled or not decisions:
+            return decisions
+        
+        allowed = allowed_symbols or set(self._get_active_selection_symbols())
+        closing_decisions: List = []
+        opening_candidates: List = []
+        
+        for decision in decisions:
+            if self._is_closing_position(decision.symbol, decision.action):
+                closing_decisions.append(decision)
+            else:
+                opening_candidates.append(decision)
+        
+        if not opening_candidates:
+            return decisions
+        
+        priority_candidates: List[tuple] = []
+        fallback_candidates: List[tuple] = []
+        skipped_symbols: List[str] = []
+        threshold = getattr(self, 'top_selection_priority_confidence', 0.65)
+        
+        for decision in opening_candidates:
+            symbol = decision.symbol
+            if allowed and symbol not in allowed:
+                skipped_symbols.append(symbol)
+                continue
+            score = ai_confidence_map.get(symbol, getattr(decision, 'confidence', 0.0) or 0.0)
+            if getattr(decision, '_is_deepseek_decision', False) and score >= threshold:
+                priority_candidates.append((score, decision))
+            else:
+                fallback_candidates.append((score, decision))
+
+        def pick_best(candidates: List[tuple]):
+            if not candidates:
+                return None, [], -1.0
+            best_score, best_decision = max(candidates, key=lambda item: item[0])
+            dropped_symbols = [dec.symbol for _, dec in candidates if dec is not best_decision]
+            return best_decision, dropped_symbols, best_score
+        
+        priority_decision, priority_dropped, priority_score = pick_best(priority_candidates)
+        if priority_decision:
+            if priority_dropped:
+                self.logger.info(
+                    f"[TopSelection] DeepSeek优先模式：执行 {priority_decision.symbol} "
+                    f"(信心度 {priority_score:.2f})，其余候选丢弃: {', '.join(sorted(set(priority_dropped)))}"
+                )
+            else:
+                self.logger.info(
+                    f"[TopSelection] DeepSeek优先模式：执行 {priority_decision.symbol} "
+                    f"(信心度 {priority_score:.2f})"
+                )
+            return closing_decisions + [priority_decision]
+        
+        fallback_decision, fallback_dropped, fallback_score = pick_best(fallback_candidates)
+        if fallback_decision:
+            if fallback_dropped:
+                self.logger.info(
+                    f"[TopSelection] DeepSeek信心度低于阈值({threshold:.2f})，降级执行 "
+                    f"{fallback_decision.symbol} (信心度 {fallback_score:.2f})，"
+                    f"其余候选丢弃: {', '.join(sorted(set(fallback_dropped)))}"
+                )
+            else:
+                self.logger.info(
+                    f"[TopSelection] DeepSeek信心度低于阈值({threshold:.2f})，"
+                    f"降级执行 {fallback_decision.symbol} (信心度 {fallback_score:.2f})"
+                )
+            return closing_decisions + [fallback_decision]
+        
+        if skipped_symbols:
+            self.logger.info(
+                f"[TopSelection] 未找到满足条件的开仓信号，"
+                f"跳过币种: {', '.join(sorted(set(skipped_symbols)))}"
+            )
+        return closing_decisions
+
+    def _seconds_until_next_interval(self, interval_seconds: int) -> float:
+        """计算距离下一个整数间隔的秒数（按UTC时间对齐，每15分钟整点）"""
+        if interval_seconds <= 0:
+            return 0.0
+        now = datetime.utcnow()
+        now_ts = now.timestamp()
+        next_ts = ((int(now_ts) // interval_seconds) + 1) * interval_seconds
+        delay = max(0.0, next_ts - now_ts)
+        return delay
+
+    async def _sleep_until_next_aligned_window(self, interval_seconds: int, context: str = ""):
+        """等待到下一个指定间隔的整点（例如 00/15/30/45 分），确保开仓时间对齐"""
+        delay = self._seconds_until_next_interval(interval_seconds)
+        if delay <= 1:
+            return
+        tag = f"[TopSelection]{context}" if context else "[TopSelection]"
+        self.logger.info(f"{tag} 距离下一个{interval_seconds//60}分钟整窗口还有 {delay:.0f} 秒，等待对齐...")
+        await asyncio.sleep(delay)
     
     async def start(self):
         """启动交易引擎"""
@@ -158,6 +340,10 @@ class TradingEngine:
             if self.ai_review_enabled and self.ai_review_task is None:
                 self.ai_review_task = asyncio.create_task(self._ai_position_review_loop())
             
+            # 2.3. DeepSeek持仓复查任务
+            if self.deepseek_review_enabled and self.deepseek_review_task is None:
+                self.deepseek_review_task = asyncio.create_task(self._deepseek_position_review_loop())
+            
             # 3. 启动主交易循环
             await self._main_trading_loop()
         
@@ -183,6 +369,14 @@ class TradingEngine:
             except asyncio.CancelledError:
                 pass
             self.ai_review_task = None
+        
+        if self.deepseek_review_task:
+            self.deepseek_review_task.cancel()
+            try:
+                await self.deepseek_review_task
+            except asyncio.CancelledError:
+                pass
+            self.deepseek_review_task = None
         
         self.logger.info("交易引擎已停止")
     
@@ -212,7 +406,20 @@ class TradingEngine:
         except (KeyError, TypeError):
             signal_interval = 300  # 默认5分钟
         
+        if self.top_selection_enabled and signal_interval < self.top_selection_interval:
+            self.logger.info(
+                f"[TopSelection] 启用每{self.top_selection_interval//60}分钟 DeepSeek 评估，"
+                f"主循环间隔由 {signal_interval}s 调整为 {self.top_selection_interval}s"
+            )
+            signal_interval = self.top_selection_interval
+        
         self.logger.info(f"主交易循环启动，信号生成间隔: {signal_interval}秒")
+        
+        if self.top_selection_enabled:
+            await self._sleep_until_next_aligned_window(
+                self.top_selection_interval,
+                context=" 初始化"
+            )
         
         while self.is_running:
             try:
@@ -221,7 +428,16 @@ class TradingEngine:
                 await asyncio.sleep(1)
                 
                 # 2. 获取市场数据（包含多时间周期数据）
-                market_data = await self._collect_market_data()
+                selection_symbols = self._get_active_selection_symbols()
+                positions_snapshot = self.position_manager.get_all_positions()
+                symbols_for_collection = set(selection_symbols)
+                for symbol, position in positions_snapshot.items():
+                    if position.get('size', 0) > 0:
+                        symbols_for_collection.add(symbol)
+                if not symbols_for_collection:
+                    symbols_for_collection = set(self.pair_config_map.keys())
+                
+                market_data = await self._collect_market_data(symbols=list(symbols_for_collection))
                 self._update_market_data_cache(market_data)
                 
                 # 2.1. 多时间周期趋势分析和量价分析
@@ -250,9 +466,26 @@ class TradingEngine:
                 
                 # 4. 过滤信号
                 filtered_signals = self.signal_filter.filter_signals(signals)
+                ai_confidence_map = self._build_ai_confidence_map(filtered_signals)
                 
-                # 5. 生成决策
-                decisions = await self._make_decisions(market_data, filtered_signals)
+                # 5. 生成决策（仅限定 Top-N 候选 + 当前持仓）
+                allowed_symbols = (
+                    set(selection_symbols[:self.top_selection_max_candidates])
+                    if self.top_selection_enabled else None
+                )
+                decisions = await self._make_decisions(
+                    market_data,
+                    filtered_signals,
+                    allowed_symbols=allowed_symbols,
+                    positions_snapshot=positions_snapshot
+                )
+                decisions = self._filter_decisions_by_top_strategy(
+                    decisions,
+                    ai_confidence_map,
+                    allowed_symbols
+                )
+                if self.top_selection_enabled:
+                    self.top_selection_last_run = datetime.now()
                 
                 # 5.1. AI仓位管理和智能平仓检查（在生成新决策前）
                 await self._check_position_adjustments(
@@ -281,8 +514,14 @@ class TradingEngine:
                 # 8. 风险监控
                 await self._monitor_risk()
                 
-                # 等待下次循环
-                await asyncio.sleep(signal_interval)
+                # 等待下次循环（Top-N 策略需要对齐到15分钟整点）
+                if self.top_selection_enabled:
+                    await self._sleep_until_next_aligned_window(
+                        self.top_selection_interval,
+                        context=" 下一轮"
+                    )
+                else:
+                    await asyncio.sleep(signal_interval)
             
             except Exception as e:
                 self.logger.error(f"主交易循环出错: {e}")
@@ -969,13 +1208,17 @@ class TradingEngine:
         return all_signals
     
     async def _make_decisions(self, market_data: Dict[str, Dict[str, Any]],
-                            signals: List) -> List:
+                             signals: List,
+                             allowed_symbols: Optional[Set[str]] = None,
+                             positions_snapshot: Optional[Dict[str, Any]] = None) -> List:
         """
         生成交易决策
         
         Args:
             market_data: 市场数据
             signals: 信号列表
+            allowed_symbols: 允许生成开仓决策的币种集合（None 表示不限制）
+            positions_snapshot: 预先获取的持仓快照，避免重复查询
             
         Returns:
             决策列表
@@ -991,10 +1234,20 @@ class TradingEngine:
             signals_by_symbol[symbol].append(signal)
         
         # 获取当前持仓
-        positions = self.position_manager.get_all_positions()
+        positions = positions_snapshot or self.position_manager.get_all_positions()
+        positions_with_position = {
+            symbol for symbol, pos in positions.items()
+            if pos.get('size', 0) > 0
+        }
         
         for symbol, symbol_signals in signals_by_symbol.items():
             try:
+                if allowed_symbols and symbol not in allowed_symbols and symbol not in positions_with_position:
+                    self.logger.debug(
+                        f"[TopSelection] {symbol} 不在候选列表且无持仓，跳过决策生成"
+                    )
+                    continue
+                
                 # 获取当前持仓
                 current_position = positions.get(symbol)
                 
@@ -1990,7 +2243,8 @@ class TradingEngine:
                                 # 生成决策
                                 new_decisions = await self._make_decisions(
                                     {symbol: symbol_market_data},
-                                    filtered_signals
+                                    filtered_signals,
+                                    allowed_symbols={symbol}
                                 )
                                 
                                 if new_decisions:
@@ -2103,6 +2357,102 @@ class TradingEngine:
             self.logger.info("AI仓位审查任务已取消")
         except Exception as e:
             self.logger.error(f"AI仓位审查任务异常: {e}", exc_info=True)
+    
+    async def _deepseek_position_review_loop(self):
+        """
+        DeepSeek持仓复查：有持仓时每分钟调用DeepSeek分析，必要时立即平仓
+        """
+        if not self.deepseek_review_enabled:
+            return
+        
+        self.logger.info(
+            f"DeepSeek持仓复查任务启动，检查间隔: {self.deepseek_review_interval}秒"
+        )
+        
+        try:
+            while self.is_running:
+                cycle_start = datetime.now()
+                try:
+                    positions = self.position_manager.get_all_positions()
+                    active_symbols = [
+                        symbol for symbol, pos in positions.items()
+                        if pos.get('size', 0) > 0
+                    ]
+                    
+                    if not active_symbols:
+                        await asyncio.sleep(self.deepseek_review_interval)
+                        continue
+                    
+                    # 限制单次处理数量，避免过度调用
+                    active_symbols = active_symbols[:self.deepseek_review_max_symbols]
+                    
+                    market_data = self._get_cached_market_data(
+                        symbols=active_symbols,
+                        max_age_seconds=max(5, self.deepseek_review_interval)
+                    )
+                    if market_data is None or any(sym not in market_data for sym in active_symbols):
+                        market_data = await self._collect_market_data(active_symbols)
+                        if market_data:
+                            self._update_market_data_cache(
+                                market_data,
+                                symbols=list(market_data.keys())
+                            )
+                    
+                    await self._evaluate_positions_with_deepseek(
+                        active_symbols,
+                        market_data or {},
+                        positions
+                    )
+                    
+                except Exception as loop_error:
+                    self.logger.error(
+                        f"DeepSeek持仓复查执行失败: {loop_error}",
+                        exc_info=True
+                    )
+                
+                elapsed = (datetime.now() - cycle_start).total_seconds()
+                sleep_time = max(self.deepseek_review_interval - elapsed, 1)
+                await asyncio.sleep(sleep_time)
+        
+        except asyncio.CancelledError:
+            self.logger.info("DeepSeek持仓复查任务已取消")
+        except Exception as e:
+            self.logger.error(f"DeepSeek持仓复查任务异常: {e}", exc_info=True)
+    
+    async def _evaluate_positions_with_deepseek(self, symbols: List[str],
+                                                market_data: Dict[str, Dict[str, Any]],
+                                                positions: Dict[str, Dict[str, Any]]):
+        """使用DeepSeek复查持仓，若AI建议离场则立即平仓"""
+        if not symbols:
+            return
+        
+        for symbol in symbols:
+            position = positions.get(symbol) or {}
+            if position.get('size', 0) <= 0:
+                continue
+            symbol_market_data = market_data.get(symbol)
+            if not symbol_market_data:
+                self.logger.debug(f"[DeepSeek复查] {symbol} 缺少市场数据，跳过")
+                continue
+            try:
+                decision = self.decision_engine.make_decision(
+                    symbol,
+                    symbol_market_data,
+                    position,
+                    bypass_frequency=True
+                )
+                if decision and decision.action in ('close_long', 'close_short'):
+                    decision.reasoning = (decision.reasoning or '') + " | DeepSeek复查触发"
+                    self.logger.info(
+                        f"[DeepSeek复查] {symbol}: {decision.action} ({decision.position_side}) "
+                        f"| 信心度={decision.confidence:.2f}"
+                    )
+                    await self._execute_trades([decision])
+            except Exception as e:
+                self.logger.error(
+                    f"[DeepSeek复查] {symbol} 处理失败: {e}",
+                    exc_info=True
+                )
     
     async def _check_pending_orders_timeout(self, market_data: Dict[str, Dict[str, Any]]):
         """
@@ -2226,7 +2576,8 @@ class TradingEngine:
                             # 生成决策
                             new_decisions = await self._make_decisions(
                                 {symbol: symbol_market_data},
-                                filtered_signals
+                                filtered_signals,
+                                allowed_symbols={symbol}
                             )
                             
                             if new_decisions:
