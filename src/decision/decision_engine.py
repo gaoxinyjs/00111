@@ -195,7 +195,8 @@ class DecisionEngine:
         return max(0.1, min(fallback_multiplier, 1.0))
     
     def make_decision(self, symbol: str, market_data: Dict[str, Any], 
-                     current_position: Optional[Dict[str, Any]] = None) -> Optional[TradingDecision]:
+                     current_position: Optional[Dict[str, Any]] = None,
+                     bypass_frequency: bool = False) -> Optional[TradingDecision]:
         """
         生成交易决策
         
@@ -203,6 +204,7 @@ class DecisionEngine:
             symbol: 交易对符号
             market_data: 市场数据
             current_position: 当前持仓信息
+            bypass_frequency: 是否绕过交易频率/亏损次数等限制（用于强制复查/风控）
             
         Returns:
             交易决策
@@ -210,57 +212,53 @@ class DecisionEngine:
         try:
             self.logger.info(f"开始生成交易决策: {symbol}")
             
-            # 0. 检查交易频率限制（针对15分钟K线优化：每15分钟必须生成一次决策）
-            # 从配置读取交易间隔（如果配置中有的话）
             trading_config = self.config_mgr.get_config('trading', 'trading_optimization', {})
             min_interval = trading_config.get('min_trade_interval', self.trade_stats['min_trade_interval'])
             self.trade_stats['min_trade_interval'] = min_interval
-            
-            # 计算距离上次交易的时间
-            time_since_last = 0
-            if self.trade_stats['last_trade_time']:
-                time_since_last = (datetime.now() - self.trade_stats['last_trade_time']).total_seconds()
-            
-            # 如果距离上次交易不足15分钟，但是已经接近15分钟（剩余时间<60秒），允许生成决策
-            # 这样可以确保每15分钟都能做出一次决策
-            if time_since_last > 0 and time_since_last < min_interval:
-                remaining_time = min_interval - time_since_last
-                if remaining_time > 60:  # 如果剩余时间超过60秒，跳过
+            if not bypass_frequency:
+                # 0. 检查交易频率限制
+                time_since_last = 0
+                if self.trade_stats['last_trade_time']:
+                    time_since_last = (datetime.now() - self.trade_stats['last_trade_time']).total_seconds()
+                
+                if time_since_last > 0 and time_since_last < min_interval:
+                    remaining_time = min_interval - time_since_last
+                    if remaining_time > 60:
+                        self.logger.warning(
+                            f"{symbol}: [交易频率限制] 距离上次交易仅{time_since_last:.0f}秒 < {min_interval}秒，"
+                            f"剩余{remaining_time:.0f}秒，跳过"
+                        )
+                        return None
+                    else:
+                        self.logger.info(
+                            f"{symbol}: [交易频率限制] 距离上次交易{time_since_last:.0f}秒，"
+                            f"剩余{remaining_time:.0f}秒，允许生成决策（接近15分钟）"
+                        )
+                
+                # 0.1. 检查日亏损限制
+                today = datetime.now().date()
+                if self.trade_stats['last_reset_date'] != today:
+                    self.trade_stats['daily_profit'] = 0.0
+                    self.trade_stats['last_reset_date'] = today
+                
+                max_daily_loss_pct = trading_config.get('max_daily_loss_pct', 0.02)
+                if self.trade_stats['daily_profit'] < -abs(max_daily_loss_pct):
                     self.logger.warning(
-                        f"{symbol}: [交易频率限制] 距离上次交易仅{time_since_last:.0f}秒 < {min_interval}秒，"
-                        f"剩余{remaining_time:.0f}秒，跳过"
+                        f"{symbol}: [日亏损限制] 当日亏损{self.trade_stats['daily_profit']:.2%} > {max_daily_loss_pct:.2%}，停止交易"
                     )
                     return None
-                else:
-                    # 接近15分钟了，允许生成决策（但标记为即将到期）
-                    self.logger.info(
-                        f"{symbol}: [交易频率限制] 距离上次交易{time_since_last:.0f}秒，"
-                        f"剩余{remaining_time:.0f}秒，允许生成决策（接近15分钟）"
+                
+                # 0.2. 检查连续亏损次数
+                max_loss_streak = trading_config.get('max_loss_streak', self.trade_stats['max_loss_streak'])
+                self.trade_stats['max_loss_streak'] = max_loss_streak
+                
+                if self.trade_stats['recent_losses'] >= max_loss_streak:
+                    self.logger.warning(
+                        f"{symbol}: [连续亏损保护] 连续亏损{self.trade_stats['recent_losses']}次 >= {max_loss_streak}次，暂停交易"
                     )
-            
-            # 0.1. 检查日亏损限制（参考ds-main）
-            today = datetime.now().date()
-            if self.trade_stats['last_reset_date'] != today:
-                self.trade_stats['daily_profit'] = 0.0
-                self.trade_stats['last_reset_date'] = today
-            
-            max_daily_loss_pct = trading_config.get('max_daily_loss_pct', 0.02)
-            if self.trade_stats['daily_profit'] < -abs(max_daily_loss_pct):
-                self.logger.warning(
-                    f"{symbol}: [日亏损限制] 当日亏损{self.trade_stats['daily_profit']:.2%} > {max_daily_loss_pct:.2%}，停止交易"
-                )
-                return None
-            
-            # 0.2. 检查连续亏损次数（针对15分钟K线优化：放宽到3次）
-            # 从配置读取最大连续亏损次数（如果配置中有的话）
-            max_loss_streak = trading_config.get('max_loss_streak', self.trade_stats['max_loss_streak'])
-            self.trade_stats['max_loss_streak'] = max_loss_streak
-            
-            if self.trade_stats['recent_losses'] >= max_loss_streak:
-                self.logger.warning(
-                    f"{symbol}: [连续亏损保护] 连续亏损{self.trade_stats['recent_losses']}次 >= {max_loss_streak}次，暂停交易"
-                )
-                return None
+                    return None
+            else:
+                self.logger.debug(f"{symbol}: [DeepSeek复查] 已绕过交易频率与亏损限制")
             
             # 1. 生成信号
             pair_cfg = self._get_pair_config(symbol)

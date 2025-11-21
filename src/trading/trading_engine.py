@@ -138,6 +138,19 @@ class TradingEngine:
         except (TypeError, ValueError):
             self.top_selection_priority_confidence = 0.65
         self.top_selection_last_run: Optional[datetime] = None
+
+        # DeepSeek持仓复查配置
+        review_cfg = self.config_mgr.get_config('trading', 'deepseek_position_review', {}) or {}
+        self.deepseek_review_enabled = bool(review_cfg.get('enabled', False))
+        try:
+            self.deepseek_review_interval = max(int(review_cfg.get('interval', 60)), 10)
+        except (TypeError, ValueError):
+            self.deepseek_review_interval = 60
+        try:
+            self.deepseek_review_max_symbols = max(int(review_cfg.get('max_symbols_per_cycle', 10)), 1)
+        except (TypeError, ValueError):
+            self.deepseek_review_max_symbols = 10
+        self.deepseek_review_task: Optional[asyncio.Task] = None
         
         # 注册数据回调
         self._register_callbacks()
@@ -327,6 +340,10 @@ class TradingEngine:
             if self.ai_review_enabled and self.ai_review_task is None:
                 self.ai_review_task = asyncio.create_task(self._ai_position_review_loop())
             
+            # 2.3. DeepSeek持仓复查任务
+            if self.deepseek_review_enabled and self.deepseek_review_task is None:
+                self.deepseek_review_task = asyncio.create_task(self._deepseek_position_review_loop())
+            
             # 3. 启动主交易循环
             await self._main_trading_loop()
         
@@ -352,6 +369,14 @@ class TradingEngine:
             except asyncio.CancelledError:
                 pass
             self.ai_review_task = None
+        
+        if self.deepseek_review_task:
+            self.deepseek_review_task.cancel()
+            try:
+                await self.deepseek_review_task
+            except asyncio.CancelledError:
+                pass
+            self.deepseek_review_task = None
         
         self.logger.info("交易引擎已停止")
     
@@ -2332,6 +2357,102 @@ class TradingEngine:
             self.logger.info("AI仓位审查任务已取消")
         except Exception as e:
             self.logger.error(f"AI仓位审查任务异常: {e}", exc_info=True)
+    
+    async def _deepseek_position_review_loop(self):
+        """
+        DeepSeek持仓复查：有持仓时每分钟调用DeepSeek分析，必要时立即平仓
+        """
+        if not self.deepseek_review_enabled:
+            return
+        
+        self.logger.info(
+            f"DeepSeek持仓复查任务启动，检查间隔: {self.deepseek_review_interval}秒"
+        )
+        
+        try:
+            while self.is_running:
+                cycle_start = datetime.now()
+                try:
+                    positions = self.position_manager.get_all_positions()
+                    active_symbols = [
+                        symbol for symbol, pos in positions.items()
+                        if pos.get('size', 0) > 0
+                    ]
+                    
+                    if not active_symbols:
+                        await asyncio.sleep(self.deepseek_review_interval)
+                        continue
+                    
+                    # 限制单次处理数量，避免过度调用
+                    active_symbols = active_symbols[:self.deepseek_review_max_symbols]
+                    
+                    market_data = self._get_cached_market_data(
+                        symbols=active_symbols,
+                        max_age_seconds=max(5, self.deepseek_review_interval)
+                    )
+                    if market_data is None or any(sym not in market_data for sym in active_symbols):
+                        market_data = await self._collect_market_data(active_symbols)
+                        if market_data:
+                            self._update_market_data_cache(
+                                market_data,
+                                symbols=list(market_data.keys())
+                            )
+                    
+                    await self._evaluate_positions_with_deepseek(
+                        active_symbols,
+                        market_data or {},
+                        positions
+                    )
+                    
+                except Exception as loop_error:
+                    self.logger.error(
+                        f"DeepSeek持仓复查执行失败: {loop_error}",
+                        exc_info=True
+                    )
+                
+                elapsed = (datetime.now() - cycle_start).total_seconds()
+                sleep_time = max(self.deepseek_review_interval - elapsed, 1)
+                await asyncio.sleep(sleep_time)
+        
+        except asyncio.CancelledError:
+            self.logger.info("DeepSeek持仓复查任务已取消")
+        except Exception as e:
+            self.logger.error(f"DeepSeek持仓复查任务异常: {e}", exc_info=True)
+    
+    async def _evaluate_positions_with_deepseek(self, symbols: List[str],
+                                                market_data: Dict[str, Dict[str, Any]],
+                                                positions: Dict[str, Dict[str, Any]]):
+        """使用DeepSeek复查持仓，若AI建议离场则立即平仓"""
+        if not symbols:
+            return
+        
+        for symbol in symbols:
+            position = positions.get(symbol) or {}
+            if position.get('size', 0) <= 0:
+                continue
+            symbol_market_data = market_data.get(symbol)
+            if not symbol_market_data:
+                self.logger.debug(f"[DeepSeek复查] {symbol} 缺少市场数据，跳过")
+                continue
+            try:
+                decision = self.decision_engine.make_decision(
+                    symbol,
+                    symbol_market_data,
+                    position,
+                    bypass_frequency=True
+                )
+                if decision and decision.action in ('close_long', 'close_short'):
+                    decision.reasoning = (decision.reasoning or '') + " | DeepSeek复查触发"
+                    self.logger.info(
+                        f"[DeepSeek复查] {symbol}: {decision.action} ({decision.position_side}) "
+                        f"| 信心度={decision.confidence:.2f}"
+                    )
+                    await self._execute_trades([decision])
+            except Exception as e:
+                self.logger.error(
+                    f"[DeepSeek复查] {symbol} 处理失败: {e}",
+                    exc_info=True
+                )
     
     async def _check_pending_orders_timeout(self, market_data: Dict[str, Dict[str, Any]]):
         """
