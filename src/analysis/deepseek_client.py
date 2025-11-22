@@ -756,11 +756,11 @@ class DeepSeekClient:
       "avoid_reason": "当direction=hold时必须说明原因；若方向明确但有隐患，也请写出主要风险",
       "entry_delay_seconds": 建议等待的秒数（0/60/120等，用于等待确认信号）,
       "strict_mode": true或false（只有在非常确定且允许立即执行时才设为true）,
-      "confidence_breakdown": {
+      "confidence_breakdown": {{
           "forward": 0-1之间浮点数,
           "technical": 0-1之间浮点数,
           "orderflow": 0-1之间浮点数
-      }
+      }}
 }}
 
 **⚠️ JSON格式要求（必须严格遵守，否则将导致交易失败）**：

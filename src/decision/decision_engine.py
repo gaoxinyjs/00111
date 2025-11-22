@@ -15,6 +15,7 @@ from ..decision.position_calculator import PositionCalculator
 from ..decision.risk_evaluator import RiskEvaluator
 from ..decision.entry_timing_evaluator import EntryTimingEvaluator
 from ..core.exception import StrategyException
+from ..risk.stop_loss_utils import get_symbol_price_stop_pct, get_symbol_account_loss_pct
 from datetime import timedelta
 
 
@@ -119,24 +120,58 @@ class DecisionEngine:
             return 1
     
     def _calculate_stop_loss_take_profit(self, entry_price: float, action: str, 
-                                         account_pnl_pct: float = 0.015, 
+                                         account_pnl_pct: float = None, 
                                          leverage: int = 1,
                                          market_data: Optional[Dict[str, Any]] = None,
-                                         signal_strength: float = 0.5) -> tuple:
+                                         signal_strength: float = 0.5,
+                                         symbol: str = None) -> tuple:
         """
-        计算考虑杠杆倍数的止盈止损价格（根据市场波动率和信号强度动态调整）
+        计算考虑杠杆倍数的止盈止损价格（优先使用配置文件中的止损参数）
         
         Args:
             entry_price: 开仓价格
             action: 操作方向（long做多, short做空）
-            account_pnl_pct: 账户盈亏百分比（默认1.5%，价格变动 ≈ 账户盈亏 ÷ leverage）
-            leverage: 杠杆倍数（默认1倍）
+            account_pnl_pct: 账户盈亏百分比（如果为None，则从配置文件读取；价格变动 ≈ 账户盈亏 ÷ leverage）
+            leverage: 杠杆倍数（如果为None，则从配置文件读取）
             market_data: 市场数据（用于获取波动率）
             signal_strength: 信号强度（用于调整止盈）
+            symbol: 交易对符号（用于从配置文件读取止损参数）
             
         Returns:
             (stop_loss_price, take_profit_price) 元组
         """
+        # 优先使用配置文件中的止损参数
+        if symbol:
+            try:
+                # 从配置文件读取账户层面止损百分比
+                account_stop_loss_pct = get_symbol_account_loss_pct(symbol, self.config_mgr)
+                if account_stop_loss_pct and account_stop_loss_pct > 0:
+                    # 使用配置文件中的止损参数
+                    price_stop_loss_pct = get_symbol_price_stop_pct(symbol, self.config_mgr)
+                    # 止盈通常是止损的2倍
+                    price_take_profit_pct = price_stop_loss_pct * 2.0
+                    
+                    if action == 'long':
+                        stop_loss_price = entry_price * (1 - price_stop_loss_pct)
+                        take_profit_price = entry_price * (1 + price_take_profit_pct)
+                    else:  # short
+                        stop_loss_price = entry_price * (1 + price_stop_loss_pct)
+                        take_profit_price = entry_price * (1 - price_take_profit_pct)
+                    
+                    self.logger.debug(
+                        f"{symbol}: 使用配置文件止损参数 | "
+                        f"账户止损={account_stop_loss_pct*100:.2f}% | "
+                        f"价格止损={price_stop_loss_pct*100:.2f}% | "
+                        f"价格止盈={price_take_profit_pct*100:.2f}%"
+                    )
+                    return stop_loss_price, take_profit_price
+            except Exception as e:
+                self.logger.warning(f"{symbol}: 读取配置文件止损参数失败，使用默认值: {e}")
+        
+        # 如果没有配置或读取失败，使用默认逻辑
+        if account_pnl_pct is None:
+            account_pnl_pct = 0.02  # 默认账户止损2%
+        
         # 根据市场波动率动态调整止损止盈
         if market_data:
             atr_pct = market_data.get('indicators', {}).get('atr_pct', 1.0)
@@ -215,11 +250,14 @@ class DecisionEngine:
             trading_config = self.config_mgr.get_config('trading', 'trading_optimization', {})
             min_interval = trading_config.get('min_trade_interval', self.trade_stats['min_trade_interval'])
             self.trade_stats['min_trade_interval'] = min_interval
+            
+            # 初始化 time_since_last（无论 bypass_frequency 如何，后续代码可能需要使用）
+            time_since_last = 0
+            if self.trade_stats['last_trade_time']:
+                time_since_last = (datetime.now() - self.trade_stats['last_trade_time']).total_seconds()
+            
             if not bypass_frequency:
                 # 0. 检查交易频率限制
-                time_since_last = 0
-                if self.trade_stats['last_trade_time']:
-                    time_since_last = (datetime.now() - self.trade_stats['last_trade_time']).total_seconds()
                 
                 if time_since_last > 0 and time_since_last < min_interval:
                     remaining_time = min_interval - time_since_last
@@ -610,16 +648,16 @@ class DecisionEngine:
                 calculated_take_profit = take_profit_price
                 
                 if not calculated_stop_loss and entry_price_for_sl_tp > 0:
-                    # 计算考虑杠杆倍数的止损（账户盈亏2%）
+                    # 计算考虑杠杆倍数的止损（优先使用配置文件中的止损参数）
                     calculated_stop_loss, _ = self._calculate_stop_loss_take_profit(
-                        entry_price_for_sl_tp, action, account_pnl_pct=0.02, leverage=leverage
+                        entry_price_for_sl_tp, action, account_pnl_pct=0.02, leverage=leverage, symbol=symbol
                     )
                     # 只取止损价格
                 
                 if not calculated_take_profit and entry_price_for_sl_tp > 0:
-                    # 计算考虑杠杆倍数的止盈（账户盈亏5%）
+                    # 计算考虑杠杆倍数的止盈（优先使用配置文件中的止损参数）
                     _, calculated_take_profit = self._calculate_stop_loss_take_profit(
-                        entry_price_for_sl_tp, action, account_pnl_pct=0.05, leverage=leverage
+                        entry_price_for_sl_tp, action, account_pnl_pct=0.05, leverage=leverage, symbol=symbol
                     )
                     # 只取止盈价格
                 
@@ -1055,7 +1093,7 @@ class DecisionEngine:
             confidence=max(confidence_val, 0.7),
             reasoning=reason,
             signals=[{'source': 'ai', 'analysis': analysis}],
-            risk_assessment={'reason': reason, 'trigger': 'ai_exit'}
+            risk_assessment={'reason': reason, 'trigger': 'ai_exit', 'passed': True}  # 平仓决策默认通过风险检查
         )
 
     def set_confidence_override(self, threshold: Optional[float]):

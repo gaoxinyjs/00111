@@ -96,11 +96,11 @@ top_selection:
     - "BTC-USDT-SWAP"
     - "XRP-USDT-SWAP"
     - "DOGE-USDT-SWAP"
-    interval: 900            # DeepSeek 分析间隔（秒）。常用值：300(5分钟)、600(10分钟)、900(15分钟)、1800(30分钟)、3600(60分钟)
-    schedule:
-      mode: "aligned"        # aligned=整点模式(例如每15分钟的00/15/30/45分)，interval=自定义秒级间隔
-      interval_seconds: 900  # 当 mode=interval 时，使用该秒数循环评估；默认为 interval
-    single_winner: true      # 是否每轮只挑出信心度最高的一个币对直接开仓
+  interval: 900            # DeepSeek 分析间隔（秒）。常用值：300(5分钟)、600(10分钟)、900(15分钟)、1800(30分钟)、3600(60分钟)
+  schedule:
+    mode: "interval"      # interval=从启动时间开始每15分钟执行一次，aligned=整点模式(例如每15分钟的00/15/30/45分)
+    interval_seconds: 900  # 执行间隔（秒）- 15分钟（900秒），从系统启动后开始计时
+  single_winner: true      # 是否每轮只挑出信心度最高的一个币对直接开仓
   max_candidates: 5        # 每轮最多纳入的候选币种数量
   priority_confidence: 0.65  # DeepSeek 信心度阈值；高于此值优先直接执行
   allow_multiple_trades: true  # 允许同时交易多个高信心度币种（如果都满足阈值）
@@ -224,7 +224,7 @@ trading_optimization:
   
   # 交易频率控制（针对15分钟K线优化）
   min_trade_interval: 900  # 最小交易间隔（秒）- 15分钟（针对15分钟K线）
-  max_loss_streak: 3  # 最大连续亏损次数，超过后暂停交易（放宽到3次）
+  max_loss_streak: 3   # 最大连续亏损次数，超过后暂停交易（放宽到3次）
   
   orderflow_analysis:
     impact_notional: 50000  # 测算冲击成本的基准USDT规模
@@ -246,3 +246,21 @@ signal_scoring:
     strong: 60  # 强信号阈值
     medium: 40  # 中等信号阈值
     weak: 20  # 弱信号阈值
+
+# 止损配置
+risk:
+  stop_loss:
+    # 基础止损配置
+    default_stop_loss_pct: 0.002  # 默认价格止损百分比（0.2%），当未配置账户止损时使用
+    account_stop_loss_pct: 0.02  # 账户层面止损百分比（2%），优先使用此值计算价格止损
+    default_leverage: 5  # 默认杠杆倍数，用于计算止损距离
+    
+    # 价格止损限制
+    min_price_stop_loss_pct: 0.001  # 最小价格止损百分比（0.1%），防止止损过近
+    max_price_stop_loss_pct: 0.01  # 最大价格止损百分比（1%），防止止损过远
+    
+    # 移动止损配置
+    trailing_stop:
+      enabled: true  # 是否启用移动止损
+      activation_profit: 0.10  # 激活移动止损的盈利百分比（10%），达到此盈利后启动移动止损
+      trailing_pct: 0.03  # 移动止损百分比（3%），盈利后止损价格跟随价格上涨/下跌

@@ -464,7 +464,8 @@ class ExecutionEngine:
                 position_side=pos_side_for_order,  # None表示"net"模式
                 is_closing=is_closing  # 合约交易：是否平仓
             )
-            order.attach_sl_tp_on_submit = False
+            # 启用开仓时自动附加止盈止损（通过 attachAlgoOrds）
+            order.attach_sl_tp_on_submit = True if not is_closing and stop_loss_price and take_profit_price else False
             order.decision_price = entry_price_for_sl
             
             # 将止盈止损价格设置到订单对象中（用于成交后设置）
