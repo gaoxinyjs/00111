@@ -14,6 +14,7 @@ from .indicators import (
     VolumeIndicatorSuite,
 )
 from .scoring import IndicatorScoringEngine, SignalFusionEngine
+from .env_loader import StrategyEnvKeys, load_env_keys
 
 
 @dataclass
@@ -37,6 +38,7 @@ class StrategyRunner:
         fusion_engine: SignalFusionEngine,
         position_manager: PositionManager,
         risk_controller: RiskController,
+        env_keys: StrategyEnvKeys | None = None,
     ) -> None:
         self._collector = data_collector
         self._feature_engineer = feature_engineer
@@ -45,6 +47,7 @@ class StrategyRunner:
         self._fusion_engine = fusion_engine
         self._position_manager = position_manager
         self._risk_controller = risk_controller
+        self._env_keys = env_keys or load_env_keys()
 
     def run_cycle(self, context: StrategyContext) -> Dict[str, Any]:
         """
@@ -73,6 +76,8 @@ class StrategyRunner:
         fusion_engine = SignalFusionEngine()
         position_manager = PositionManager()
         risk_controller = RiskController()
+        env_keys = load_env_keys()
+
         return cls(
             data_collector=collector,
             feature_engineer=features,
@@ -81,4 +86,5 @@ class StrategyRunner:
             fusion_engine=fusion_engine,
             position_manager=position_manager,
             risk_controller=risk_controller,
+            env_keys=env_keys,
         )
