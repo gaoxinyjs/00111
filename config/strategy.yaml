@@ -1,0 +1,40 @@
+# 策略系统配置示例
+symbols:
+  - BTC-USDT-SWAP
+  - ETH-USDT-SWAP
+  - SOL-USDT-SWAP
+  - BNB-USDT-SWAP
+  - DOGE-USDT-SWAP
+
+intervals:
+  - 15m
+  - 4h
+  - 1d
+
+data_limit: 200
+
+indicator_weights:
+  trend: 0.3
+  volume: 0.2
+  structure: 0.2
+  multi_timeframe: 0.15
+  vwap: 0.1
+  reversal: -0.05
+
+fusion:
+  deepseek_weight: 0.6
+  indicator_weight: 0.4
+  long_threshold: 0.7
+  short_threshold: -0.7
+
+position_tiers:
+  "0.6": 0.05
+  "0.7": 0.08
+  "0.8": 0.10
+  "0.9": 0.15
+
+risk:
+  minute_check_interval: 60
+  force_flat_time: "23:45"
+  tp_ratio: 0.06
+  sl_ratio: 0.03

@@ -80,6 +80,7 @@ class ConfigManager:
             'trading': 'trading_config.yaml',
             'risk': 'risk_config.yaml',
             'api': 'api_config.yaml',
+            'strategy': 'strategy.yaml',
         }
         
         for key, filename in config_files.items():
@@ -172,6 +173,7 @@ class ConfigManager:
                 'trading': 'trading_config.yaml',
                 'risk': 'risk_config.yaml',
                 'api': 'api_config.yaml',
+                'strategy': 'strategy.yaml',
             }
             
             if section in config_files:
