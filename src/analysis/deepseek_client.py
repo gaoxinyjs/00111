@@ -1713,40 +1713,40 @@ JSON格式输出：
                 result = json.loads(response_text)
                 
                 # 提取方向、开仓限价、平仓限价（添加类型检查和转换）
-                  def _safe_float(value, default=None):
-                      if value is None:
-                          return default
-                      if isinstance(value, (int, float)):
-                          return float(value)
-                      if isinstance(value, dict):
-                          inner_val = value.get('value')
-                          return _safe_float(inner_val, default)
-                      try:
-                          return float(value)
-                      except (TypeError, ValueError):
-                          return default
-                  
-                  def _safe_int(value, default=None):
-                      if value is None:
-                          return default
-                      if isinstance(value, int):
-                          return value
-                      try:
-                          return int(float(value))
-                      except (TypeError, ValueError):
-                          return default
-                  
-                  def _safe_str(value, default=''):
-                      if value is None:
-                          return default
-                      if isinstance(value, str):
-                          return value
-                      try:
-                          return str(value)
-                      except Exception:
-                          return default
-                  
-                  direction_raw = result.get('direction', 'hold')
+                def _safe_float(value, default=None):
+                    if value is None:
+                        return default
+                    if isinstance(value, (int, float)):
+                        return float(value)
+                    if isinstance(value, dict):
+                        inner_val = value.get('value')
+                        return _safe_float(inner_val, default)
+                    try:
+                        return float(value)
+                    except (TypeError, ValueError):
+                        return default
+                
+                def _safe_int(value, default=None):
+                    if value is None:
+                        return default
+                    if isinstance(value, int):
+                        return value
+                    try:
+                        return int(float(value))
+                    except (TypeError, ValueError):
+                        return default
+                
+                def _safe_str(value, default=''):
+                    if value is None:
+                        return default
+                    if isinstance(value, str):
+                        return value
+                    try:
+                        return str(value)
+                    except Exception:
+                        return default
+                
+                direction_raw = result.get('direction', 'hold')
                 # 确保direction是字符串类型，避免类型错误
                 if isinstance(direction_raw, dict):
                     direction = str(direction_raw.get('value', direction_raw)).lower() if isinstance(direction_raw.get('value', None), str) else 'hold'
@@ -1755,30 +1755,30 @@ JSON格式输出：
                 else:
                     direction = direction_raw.lower()
                 
-                  entry_limit_price = _safe_float(result.get('entry_limit_price'), None)
-                  exit_limit_price = _safe_float(result.get('exit_limit_price'), None)
+                entry_limit_price = _safe_float(result.get('entry_limit_price'), None)
+                exit_limit_price = _safe_float(result.get('exit_limit_price'), None)
                 
                 # 记录分析结果（添加类型检查和转换）
-                  recommendation = _safe_str(result.get('recommendation', 'unknown'), 'unknown')
-                  confidence = _safe_float(result.get('confidence', 0.0), 0.0) or 0.0
-                  trend = _safe_str(result.get('trend', 'N/A'), 'N/A')
-                  reasoning_raw = result.get('reasoning', '')
-                  reasoning = _safe_str(reasoning_raw, '')
+                recommendation = _safe_str(result.get('recommendation', 'unknown'), 'unknown')
+                confidence = _safe_float(result.get('confidence', 0.0), 0.0) or 0.0
+                trend = _safe_str(result.get('trend', 'N/A'), 'N/A')
+                reasoning_raw = result.get('reasoning', '')
+                reasoning = _safe_str(reasoning_raw, '')
                 reasoning = reasoning[:200]  # 只记录前200字符，避免日志过长
-                  noise_risk = _safe_float(result.get('noise_risk'), None)
-                  avoid_reason = _safe_str(result.get('avoid_reason'))
-                  entry_delay_seconds = _safe_int(result.get('entry_delay_seconds'), None)
-                  strict_mode = bool(result.get('strict_mode', False))
-                  confidence_breakdown = result.get('confidence_breakdown') or {}
+                noise_risk = _safe_float(result.get('noise_risk'), None)
+                avoid_reason = _safe_str(result.get('avoid_reason'))
+                entry_delay_seconds = _safe_int(result.get('entry_delay_seconds'), None)
+                strict_mode = bool(result.get('strict_mode', False))
+                confidence_breakdown = result.get('confidence_breakdown') or {}
                 
                 # 确保所有数值都是数字类型，避免格式说明符错误
-                  entry_limit_price_float = entry_limit_price if entry_limit_price is not None else None
-                  exit_limit_price_float = exit_limit_price if exit_limit_price is not None else None
-                  confidence_float = confidence if confidence is not None else 0.0
+                entry_limit_price_float = entry_limit_price if entry_limit_price is not None else None
+                exit_limit_price_float = exit_limit_price if exit_limit_price is not None else None
+                confidence_float = confidence if confidence is not None else 0.0
                 
                 # 格式化数值，避免在f-string中使用格式说明符
-                  entry_limit_price_str = f"{entry_limit_price_float:.5f}" if entry_limit_price_float is not None else 'N/A'
-                  exit_limit_price_str = f"{exit_limit_price_float:.5f}" if exit_limit_price_float is not None else 'N/A'
+                entry_limit_price_str = f"{entry_limit_price_float:.5f}" if entry_limit_price_float is not None else 'N/A'
+                exit_limit_price_str = f"{exit_limit_price_float:.5f}" if exit_limit_price_float is not None else 'N/A'
                 confidence_str_log = f"{confidence_float:.2f}"
                 
                 # 记录方向、限价信息
@@ -1797,8 +1797,8 @@ JSON格式输出：
                         f"[DeepSeek分析结果] 交易对: {symbol} | "
                         f"建议: {recommendation} | "
                         f"趋势: {trend} | "
-                          f"信心度: {confidence_str_log} | "
-                          f"原因: {avoid_reason or '未提供'}"
+                        f"信心度: {confidence_str_log} | "
+                        f"原因: {avoid_reason or '未提供'}"
                     )
                 
                 # 更新result字典，确保所有字段都是正确的类型
@@ -1809,11 +1809,11 @@ JSON格式输出：
                 result['confidence'] = confidence
                 result['trend'] = trend
                 result['reasoning'] = reasoning
-                  result['noise_risk'] = noise_risk
-                  result['avoid_reason'] = avoid_reason
-                  result['entry_delay_seconds'] = entry_delay_seconds
-                  result['strict_mode'] = strict_mode
-                  result['confidence_breakdown'] = confidence_breakdown
+                result['noise_risk'] = noise_risk
+                result['avoid_reason'] = avoid_reason
+                result['entry_delay_seconds'] = entry_delay_seconds
+                result['strict_mode'] = strict_mode
+                result['confidence_breakdown'] = confidence_breakdown
                 
                 # 记录详细的分析结果（包含完整推理过程）
                 self.logger.debug(f"[DeepSeek分析详情] 交易对: {symbol}")

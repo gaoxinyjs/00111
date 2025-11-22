@@ -2127,6 +2127,10 @@ class TradingEngine:
                             quick_profit_target_ratio = quick_stop_loss_ratio * 2
                         quick_profit_target = quick_profit_target_ratio * 100
                         quick_stop_loss = quick_stop_loss_ratio * 100
+                        # 将账户止损/止盈转换为价格百分比，方便排查（价格变动 % ≈ 账户盈亏 % ÷ leverage）
+                        leverage_safe = leverage if leverage and leverage > 0 else 1
+                        price_stop_loss_pct = quick_stop_loss / leverage_safe
+                        price_take_profit_pct = quick_profit_target / leverage_safe
                         
                         # ⚠️ 优先检查快速止损（保护资金）- 这是最重要的检查！
                         # 使用账户盈亏百分比进行比较
@@ -2134,7 +2138,7 @@ class TradingEngine:
                             self.logger.error(
                                 f"🚨 [快速止损触发] {symbol}: {position_side} | "
                                 f"账户盈亏{account_pnl_pct:.2f}% <= 止损限制{-quick_stop_loss:.2f}% | "
-                                f"价格变动={price_change_pct:.2f}% (杠杆{leverage}x) | "
+                                f"价格变动={price_change_pct:.2f}% (≈止损价距{price_stop_loss_pct:.2f}%@{leverage_safe}x) | "
                                 f"开仓价={entry_price:.5f}, 当前价={current_price:.5f} | "
                                 f"持仓量={position_size:.4f} | ⚠️ 立即平仓！"
                             )
@@ -2161,7 +2165,7 @@ class TradingEngine:
                             self.logger.info(
                                 f"💰 [快速止盈触发] {symbol}: {position_side} | "
                                 f"账户盈亏{account_pnl_pct:.2f}% >= 止盈目标{quick_profit_target:.2f}% | "
-                                f"价格变动={price_change_pct:.2f}% (杠杆{leverage}x) | "
+                                f"价格变动={price_change_pct:.2f}% (≈止盈价距{price_take_profit_pct:.2f}%@{leverage_safe}x) | "
                                 f"开仓价={entry_price:.5f}, 当前价={current_price:.5f} | "
                                 f"持仓量={position_size:.4f}"
                             )
@@ -2177,9 +2181,9 @@ class TradingEngine:
                             self.logger.debug(
                                 f"[持仓盈亏] {symbol}: {position_side} | "
                                 f"账户盈亏={account_pnl_pct:.2f}% | "
-                                f"价格变动={price_change_pct:.2f}% (杠杆{leverage}x) | "
-                                f"止损阈值={-quick_stop_loss:.2f}% (账户盈亏) | "
-                                f"止盈阈值={quick_profit_target:.2f}% (账户盈亏)"
+                                f"价格变动={price_change_pct:.2f}% (杠杆{leverage_safe}x) | "
+                                f"止损阈值={-quick_stop_loss:.2f}% (账户)，约等于价格{price_stop_loss_pct:.2f}% | "
+                                f"止盈阈值={quick_profit_target:.2f}% (账户)，约等于价格{price_take_profit_pct:.2f}%"
                             )
                     
                     # 计算动态止损止盈价格（用于价格止损止盈检查）

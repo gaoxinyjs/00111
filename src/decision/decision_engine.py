@@ -129,7 +129,7 @@ class DecisionEngine:
         Args:
             entry_price: 开仓价格
             action: 操作方向（long做多, short做空）
-            account_pnl_pct: 账户盈亏百分比（默认1.5%）
+            account_pnl_pct: 账户盈亏百分比（默认1.5%，价格变动 ≈ 账户盈亏 ÷ leverage）
             leverage: 杠杆倍数（默认1倍）
             market_data: 市场数据（用于获取波动率）
             signal_strength: 信号强度（用于调整止盈）
