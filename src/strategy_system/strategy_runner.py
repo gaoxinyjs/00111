@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any, Dict, List
 
+from ..core.config_manager import get_config_manager
+from .config import StrategyConfig, load_strategy_config
 from .data_pipeline import FeatureEngineer, MarketDataCollector, MarketDataRequest
-from .execution import PositionManager, RiskController
+from .execution import PositionManager, PositionSizingConfig, RiskController, RiskConfig
 from .indicators import (
     MultiTimeframeMomentumSuite,
     ReversalIndicatorSuite,
@@ -13,7 +15,7 @@ from .indicators import (
     VWAPIndicatorSuite,
     VolumeIndicatorSuite,
 )
-from .scoring import IndicatorScoringEngine, SignalFusionEngine
+from .scoring import FusionConfig, IndicatorScoringEngine, ScoringWeights, SignalFusionEngine
 from .env_loader import StrategyEnvKeys, load_env_keys
 
 
@@ -39,6 +41,7 @@ class StrategyRunner:
         position_manager: PositionManager,
         risk_controller: RiskController,
         env_keys: StrategyEnvKeys | None = None,
+        strategy_config: StrategyConfig | None = None,
     ) -> None:
         self._collector = data_collector
         self._feature_engineer = feature_engineer
@@ -48,11 +51,26 @@ class StrategyRunner:
         self._position_manager = position_manager
         self._risk_controller = risk_controller
         self._env_keys = env_keys or load_env_keys()
+        self._strategy_config = strategy_config
+        self._default_context = (
+            StrategyContext(
+                symbols=strategy_config.symbols,
+                intervals=strategy_config.intervals,
+                data_limit=strategy_config.data_limit,
+            )
+            if strategy_config
+            else None
+        )
 
-    def run_cycle(self, context: StrategyContext) -> Dict[str, Any]:
+    def run_cycle(self, context: StrategyContext | None = None) -> Dict[str, Any]:
         """
         Executes one 15m decision cycle. Intended to be called by an external scheduler.
         """
+
+        if context is None:
+            if not self._default_context:
+                raise ValueError("Strategy context not provided and no default configuration loaded.")
+            context = self._default_context
 
         raise NotImplementedError("Implement orchestration logic (data→features→scores→orders)")
 
@@ -62,6 +80,8 @@ class StrategyRunner:
         Convenience constructor wiring default modules and configs.
         """
 
+        config_manager = get_config_manager()
+        strategy_cfg = load_strategy_config(config_manager)
         collector = MarketDataCollector(client=client)
         features = FeatureEngineer()
         indicator_modules = {
@@ -72,10 +92,26 @@ class StrategyRunner:
             "vwap": VWAPIndicatorSuite(),
             "reversal": ReversalIndicatorSuite(),
         }
-        scoring_engine = IndicatorScoringEngine()
-        fusion_engine = SignalFusionEngine()
-        position_manager = PositionManager()
-        risk_controller = RiskController()
+        weight_kwargs: Dict[str, float] = {}
+        for field in fields(ScoringWeights):
+            if field.name in strategy_cfg.indicator_weights:
+                weight_kwargs[field.name] = strategy_cfg.indicator_weights[field.name]
+        scoring_weights = ScoringWeights(**weight_kwargs) if weight_kwargs else ScoringWeights()
+        scoring_engine = IndicatorScoringEngine(weights=scoring_weights)
+        fusion_engine = SignalFusionEngine(
+            config=FusionConfig(**strategy_cfg.fusion.as_dict())
+        )
+        position_manager = PositionManager(
+            config=PositionSizingConfig(tiers=strategy_cfg.position_tiers or None)
+        )
+        risk_controller = RiskController(
+            config=RiskConfig(
+                minute_check_interval=strategy_cfg.risk.minute_check_interval,
+                force_flat_time=strategy_cfg.risk.force_flat_time,
+                tp_ratio=strategy_cfg.risk.tp_ratio,
+                sl_ratio=strategy_cfg.risk.sl_ratio,
+            )
+        )
         env_keys = load_env_keys()
 
         return cls(
@@ -87,4 +123,5 @@ class StrategyRunner:
             position_manager=position_manager,
             risk_controller=risk_controller,
             env_keys=env_keys,
+            strategy_config=strategy_cfg,
         )
