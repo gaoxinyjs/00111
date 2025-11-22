@@ -341,15 +341,16 @@ class DeepSeekClient:
 
 ## 🎯 核心任务（必须完成）
 
-**你必须根据以下市场数据和技术指标，给出明确的交易决策：**
+  **你必须根据以下市场数据和技术指标，给出明确的交易决策或观望理由：**
 
-1. **direction**（必填）：**只能**"long"（做多）或"short"（做空），**不允许**"hold"（观望）
-2. **entry_limit_price**（必填）：开仓限价（具体数字，不要百分比）
-3. **exit_limit_price**（必填）：平仓限价（止盈目标，具体数字，不要百分比）
+  1. **direction**（必填）：允许返回 "long"（做多）、"short"（做空）或 "hold"（观望/暂缓）
+  2. **entry_limit_price**：当direction为long或short时必填（具体数字，不要百分比；若观望请返回`null`）
+  3. **exit_limit_price**：当direction为long或short时必填（止盈目标，具体数字，不要百分比；若观望返回`null`）
+  4. **noise_risk / avoid_reason / entry_delay_seconds**：必须评估噪音风险，若不满足交易条件需要解释原因
 
-**⚠️ 重要提示**：代码内部不做决策，只提供指标数据。**所有决策都由你完成**。你必须给出明确的direction、entry_limit_price和exit_limit_price。
+  **⚠️ 重要提示**：代码内部不做决策，只提供指标数据。**所有决策都由你完成**。除非你详细写出`avoid_reason`说明为什么观望，否则系统会默认执行你的方向。
 
-**🚨 关键要求**：**direction字段只能返回"long"或"short"，不能返回"hold"**。即使信号不明确，也要根据整体趋势选择long或short。如果无法确定方向，优先选择与当前趋势一致的方向。
+  **🚨 关键要求**：当你认为市场噪音高、信号矛盾、风险收益比不足或关键价位尚未确认时，可以返回"hold"并给出`avoid_reason`和建议的重新评估时间；只有在前瞻性指标、量价、做市商意图至少两项共振且噪音风险可控时，才返回long或short。
 
 **🎯 分析优先级（必须严格遵守）**：
 - **优先级1（最高）**：前瞻性指标（订单簿、订单流、成交量分布）- 比滞后指标更早捕捉价格变化，必须优先分析
@@ -360,15 +361,15 @@ class DeepSeekClient:
 **重要**：如果前瞻性指标和技术指标方向相反，**以前瞻性指标为主**，因为前瞻性指标能更早捕捉价格变化。
 
 ## 核心交易策略（重新设计）
-**交易模式**: 短线合约交易（使用10倍杠杆，快速出击，快速撤退）
+**交易模式**: 短线合约交易（默认≤5倍杠杆，如需更高杠杆必须给出理由）
 **核心原则**:
 1. **稳健交易**：优先保证资金安全，追求稳定收益，不追求暴利
-2. **严格止损**：根据市场波动率动态调整止损（1.2%-2%），止盈（2.5%-4%），风险收益比1:2
-3. **多指标共振**：前瞻性指标+量价关系+技术指标三者一致才给出强烈建议
+2. **严格止损**：根据市场波动率动态调整止损（价格0.08%-0.25%），止盈（0.15%-0.45%），风险收益比≥1:1.8
+3. **多指标共振**：前瞻性指标+量价关系+技术指标至少两者同向才给出强烈建议
 4. **量价配合**：成交量必须配合价格变化，量价背离必须警惕
 5. **做市商意图**：订单簿分析是关键，大单分布揭示真实意图
-6. **动态仓位**：根据信心度分级（高信心度5-8%，中等3-5%，低1-3%）
-7. **方向判断**：必须结合前瞻性指标和技术指标，避免单一方向交易
+6. **动态仓位**：根据信心度与噪音分级（高信心度≤5%仓位，中等3-4%，低信心度≤2%）
+7. **方向判断**：必须结合前瞻性指标和技术指标，若矛盾请返回hold
 
 ## 交易对信息
 **交易对**: {symbol_str}
@@ -686,41 +687,41 @@ class DeepSeekClient:
 **决策标准**：
 **交易建议类型**（只能选择long或short，不允许hold）：
 - **强烈买入（long）**：前瞻性指标+量价关系+技术指标三者一致，多周期趋势一致，风险收益比≥1:2（信心度>0.75，仓位5-8%）
-- **买入（long）**：前瞻性指标和技术指标一致，量价关系健康，风险收益比≥1:2（信心度0.6-0.75，仓位3-5%）
-- **谨慎买入（long）**：部分指标确认，量价关系一般，风险收益比≥1:2（信心度0.4-0.6，仓位1-3%）
-- **谨慎卖出（short）**：部分指标确认，量价关系一般，风险收益比≥1:2（信心度0.4-0.6，仓位1-3%）
-- **卖出（short）**：前瞻性指标和技术指标一致，量价关系健康，风险收益比≥1:2（信心度0.6-0.75，仓位3-5%）
-- **强烈卖出（short）**：前瞻性指标+量价关系+技术指标三者一致，多周期趋势一致，风险收益比≥1:2（信心度>0.75，仓位5-8%）
-- **注意**：信心度<0.4时，不建议交易（仓位0%）。即使信号不明确，也要根据整体趋势选择long或short，不能选择hold
+  - **买入（long）**：前瞻性指标与量价关系至少两个同向，风险收益≥1:1.8（信心度≥0.65，仓位≤4%）
+  - **谨慎买入（long）**：部分指标确认但噪音<0.4，风险收益≥1:2（信心度0.5-0.65，仓位≤2.5%）
+  - **谨慎卖出（short）**：条件同上但方向相反
+  - **卖出（short）**：前瞻性指标+量价关系共振（信心度≥0.65，仓位≤4%）
+  - **强烈卖出（short）**：前瞻性+量价+做市商意图三者一致，且多周期一致（信心度≥0.8，仓位≤5%）
+  - **观望（hold）**：信心度<0.5、噪音风险≥0.4、风险收益比不足1:1.8、关键价位未确认或宏观事件干扰；必须提供`avoid_reason`
 
 **关键判断标准（必须严格遵守）**：
 1. **多指标确认**：MACD、RSI、布林带、均线、多周期至少3个以上确认才给出强烈建议
 2. **量价配合**：价格上涨必须配合成交量放大，价格下跌必须配合成交量放大，否则可能是假信号
 3. **做市商意图**：订单簿分析显示做市商在看多/看空，这是重要的参考依据
 4. **多周期一致性**：1小时、4小时、24小时趋势一致时信号更强
-5. **风险收益比**：只有风险收益比≥1:2时才建议入场（根据市场波动率动态调整止损止盈，风险收益比1:2）
-6. **信号矛盾时**：如果技术指标矛盾或量价背离，根据前瞻性指标或整体趋势选择long或short，不能返回hold
+  5. **风险收益比**：只有风险收益比≥1:1.8且预计持仓时间<30分钟时才建议入场
+  6. **信号矛盾时**：如果技术指标矛盾或量价背离，请返回hold并写出`avoid_reason`（例如“量价背离，等待成交量确认”）
 
 **止损止盈要求**（根据市场波动率动态调整）：
-- **止损策略**：
-  * 低波动率（ATR < 1%）：账户盈亏1.2%（10倍杠杆下，价格变动0.12%）
-  * 中等波动率（1% ≤ ATR < 2%）：账户盈亏1.5%（10倍杠杆下，价格变动0.15%）
-  * 高波动率（ATR ≥ 2%）：账户盈亏2%（10倍杠杆下，价格变动0.2%）
-- **止盈策略**：
-  * 低波动率：账户盈亏2.5%（10倍杠杆下，价格变动0.25%），风险收益比1:2.1
-  * 中等波动率：账户盈亏3%（10倍杠杆下，价格变动0.3%），风险收益比1:2
-  * 高波动率：账户盈亏4%（10倍杠杆下，价格变动0.4%），风险收益比1:2
-  * 强烈信号（信心度>0.75）：止盈可提高到3.5%
-- **杠杆倍数**：当前使用10倍杠杆，价格变动1%对应账户盈亏10%，必须严格控制
-- **移动止损**：盈利>1%时移动止损到开仓价，盈利>2%时移动止损到盈利1%位置
+  - **止损策略**：
+    * 低波动率（ATR < 1%）：价格变动0.08%-0.12%（账户亏损≤1% @10x）
+    * 中等波动率（1% ≤ ATR < 2%）：价格变动0.12%-0.18%
+    * 高波动率（ATR ≥ 2%）：价格变动0.18%-0.25%
+  - **止盈策略**：
+    * 低波动率：价格变动0.15%-0.25%（账户盈利1.5%-2.5%）
+    * 中等波动率：价格变动0.25%-0.35%
+    * 高波动率：价格变动0.35%-0.45%
+    * 强烈信号（信心度>0.8）：可分两档止盈（先锁利润后再看延伸）
+  - **杠杆倍数**：默认≤5x，若建议使用更高杠杆必须说明原因和额外保护
+  - **移动止损**：盈利>0.2%时移动止损到开仓价，盈利>0.35%时锁定至少一半利润
 - **重要**：止损止盈根据市场波动率动态调整，避免被正常波动触发，同时控制风险
 
 **特别强调**：
-- 不要只看到技术指标就给出建议，必须结合量价关系和做市商意图
-- 如果RSI超卖但成交量萎缩，可能是假反弹，不建议做多
-- 如果MACD死叉但成交量放大，做空信号更强
-- 如果多个周期趋势不一致，必须谨慎，建议观望
-- 当前使用10倍杠杆，风险放大10倍，必须严格控制仓位和止损
+  - 不要只看到技术指标就给出建议，必须结合量价关系和做市商意图
+  - 如果RSI超卖但成交量萎缩，可能是假反弹，请返回hold并写明条件
+  - 如果MACD死叉但成交量放大，做空信号更强，但仍需评估噪音
+  - 如果多个周期趋势不一致，必须谨慎，默认观望并提示需要的触发条件
+  - 默认低杠杆运行，只有在噪音风险<0.3且信心度>0.8时才建议激进仓位
 
 ## 📤 输出格式（JSON - 必须严格遵守）
 
@@ -728,10 +729,10 @@ class DeepSeekClient:
 
 **JSON格式示例（不要包含这些文字，只输出纯JSON）**：
 
-{{
-    "direction": "long或short（只能选择其一，不允许hold）",
-    "entry_limit_price": 具体数字（浮点数，做多时建议低于当前价格0.1-0.3%，做空时建议高于当前价格0.1-0.3%）,
-    "exit_limit_price": 具体数字（浮点数，做多时建议高于开仓价格0.25%-0.4%，做空时建议低于开仓价格0.25%-0.4%，根据市场波动率调整，对应账户盈亏2.5%-4%）,
+  {{
+      "direction": "long / short / hold",
+      "entry_limit_price": 具体数字（若观望则为null；做多建议低于当前价格0.1-0.25%，做空建议高于0.1-0.25%）,
+      "exit_limit_price": 具体数字（若观望则为null；做多建议高于entry 0.15%-0.45%，做空建议低于entry 0.15%-0.45%）,
     "trend": "上涨/下跌/震荡/趋势不明",
     "trend_strength": "强/中/弱",
     "trend_sustainability": "可持续/可能反转/不确定",
@@ -742,15 +743,24 @@ class DeepSeekClient:
     "volume_price_analysis": "量价关系详细解读（成交量与价格的关系，是否背离）",
     "market_maker_intent": "做市商意图详细解读（根据订单簿分析，做市商是在看多还是看空）",
     "entry_timing": "最佳入场时机/观望等待/不建议入场（综合考虑技术指标、量价关系和做市商意图）",
-    "risk_reward_ratio": "风险收益比评估（如1:2表示亏损1.5%可能盈利3%，根据市场波动率动态调整）",
-    "recommendation": "强烈买入/买入/谨慎买入/观望/谨慎卖出/卖出/强烈卖出",
+      "risk_reward_ratio": "风险收益比评估（必须≥1:1.8才建议入场）",
+      "recommendation": "强烈买入/买入/谨慎买入/观望/谨慎卖出/卖出/强烈卖出",
     "confidence": 0.0-1.0之间的浮点数（信心度，基于信号确认程度）,
     "reasoning": "详细的交易理由和分析逻辑（至少200字）",
     "stop_loss_suggestion": "建议的止损位置（百分比或价格）",
     "take_profit_suggestion": "建议的止盈位置（百分比或价格）",
     "key_factors": ["关键因素1", "关键因素2", "关键因素3"],
-    "entry_price_reason": "开仓限价的理由（为什么选择这个价格，至少50字）",
-    "exit_price_reason": "平仓限价的理由（为什么选择这个价格，至少50字）"
+      "entry_price_reason": "开仓限价的理由（为什么选择这个价格，至少50字）",
+      "exit_price_reason": "平仓限价的理由（为什么选择这个价格，至少50字）",
+      "noise_risk": 0.0-1.0之间的浮点数（噪音/突发反向风险，≥0.6必须观望）,
+      "avoid_reason": "当direction=hold时必须说明原因；若方向明确但有隐患，也请写出主要风险",
+      "entry_delay_seconds": 建议等待的秒数（0/60/120等，用于等待确认信号）,
+      "strict_mode": true或false（只有在非常确定且允许立即执行时才设为true）,
+      "confidence_breakdown": {
+          "forward": 0-1之间浮点数,
+          "technical": 0-1之间浮点数,
+          "orderflow": 0-1之间浮点数
+      }
 }}
 
 **⚠️ JSON格式要求（必须严格遵守，否则将导致交易失败）**：
@@ -763,40 +773,37 @@ class DeepSeekClient:
 5. JSON必须完整且有效，可以被直接解析
 6. 必须以{{开头，以}}结尾，中间是完整的JSON对象
 
-**⚠️ 关键要求（必须严格遵守，否则将导致交易失败）**：
-
-1. **direction字段**（必填，不能为空，只能选择long或short）：
-   - "long" = 做多（买入）- 给出明确的做多信号
-   - "short" = 做空（卖出）- 给出明确的做空信号
-   - **不允许返回"hold"**：即使信号不明确，也要根据整体趋势选择long或short。如果无法确定方向，优先选择与当前趋势一致的方向。
+  **⚠️ 关键要求（必须严格遵守，否则将导致交易失败）**：
+  
+  1. **direction字段**（必填）：
+     - "long" / "short"：只有在风险收益比≥1:1.8、噪音风险<0.5、至少两个核心因子共振时才返回
+     - "hold"：当前不建议入场。返回hold时必须提供 `avoid_reason`、`entry_delay_seconds`，并可附上触发条件
    
-2. **entry_limit_price字段**（必填，必须提供具体数字，不能为null或0）：
-   - **做多时**：建议低于当前价格0.1-0.3%，以便在回调时买入，获得更好的入场价格，同时确保能够成交
+  2. **entry_limit_price字段**：
+     - **做多时**：建议低于当前价格0.1-0.25%，以便在回调时买入，获得更好的入场价格，同时确保能够成交
      * 示例：当前价格50000 → entry_limit_price可以是49950（低于0.1%）或49850（低于0.3%）或49900（低于0.2%）
      * **重要**：不要设置过低（低于0.5%），否则可能无法成交；也不要设置过高（高于0.1%），否则可能失去最佳入场价格
-   - **做空时**：建议高于当前价格0.1-0.3%，以便在反弹时卖出，获得更好的入场价格，同时确保能够成交
+     - **做空时**：建议高于当前价格0.1-0.25%，以便在反弹时卖出，获得更好的入场价格，同时确保能够成交
      * 示例：当前价格50000 → entry_limit_price可以是50050（高于0.1%）或50150（高于0.3%）或50100（高于0.2%）
      * **重要**：不要设置过高（高于0.5%），否则可能无法成交；也不要设置过低（低于0.1%），否则可能失去最佳入场价格
-   - **必须提供具体数字，不要用百分比，不要用null，不要用0**
+     - **direction=hold时请返回null**
    
-3. **exit_limit_price字段**（必填，必须提供具体数字，不能为null或0）：
-   - **做多时**：建议高于entry_limit_price，目标账户盈亏2.5%-4%（根据市场波动率调整）
-     * 低波动率：entry_limit_price * 1.0025（+0.25%，账户盈亏2.5%）
-     * 中等波动率：entry_limit_price * 1.003（+0.3%，账户盈亏3%）
-     * 高波动率：entry_limit_price * 1.004（+0.4%，账户盈亏4%）
-     * 强烈信号：可提高到entry_limit_price * 1.0035（+0.35%，账户盈亏3.5%）
-   - **做空时**：建议低于entry_limit_price，目标账户盈亏2.5%-4%（根据市场波动率调整）
-     * 低波动率：entry_limit_price * 0.9975（-0.25%，账户盈亏2.5%）
-     * 中等波动率：entry_limit_price * 0.997（-0.3%，账户盈亏3%）
-     * 高波动率：entry_limit_price * 0.996（-0.4%，账户盈亏4%）
-     * 强烈信号：可提高到entry_limit_price * 0.9965（-0.35%，账户盈亏3.5%）
-   - **必须提供具体数字，不要用百分比，不要用null，不要用0**
-   - **注意**：这是止盈目标价格，止损由系统根据市场波动率自动设置（账户盈亏1.2%-2%，考虑杠杆倍数）
+  3. **exit_limit_price字段**：
+     - **做多时**：建议高于entry_limit_price，目标价格变动0.15%-0.45%
+       * 低波动率：entry_limit_price * (1 + 0.0015 ~ 0.0025)
+       * 中等波动率：entry_limit_price * (1 + 0.0025 ~ 0.0035)
+       * 高波动率：entry_limit_price * (1 + 0.0035 ~ 0.0045)
+     - **做空时**：建议低于entry_limit_price，目标价格变动0.15%-0.45%
+       * 低波动率：entry_limit_price * (1 - 0.0015 ~ 0.0025)
+       * 中等波动率：entry_limit_price * (1 - 0.0025 ~ 0.0035)
+       * 高波动率：entry_limit_price * (1 - 0.0035 ~ 0.0045)
+     - **direction=hold时请返回null；若分批止盈，请给出最主要的一档目标**
+     - **注意**：这是止盈目标价格，止损由系统根据市场波动率自动设置（账户盈亏≤2%，考虑杠杆倍数）
    
-4. **direction不允许为"hold"**：
-   - 必须返回"long"或"short"
-   - 即使信号不明确，也要根据整体趋势选择方向
-   - 如果无法确定方向，优先选择与当前趋势一致的方向
+  4. **噪音评估与观望条件**：
+     - 如果订单簿/订单流/量价任意两个维度出现冲突，或宏观事件造成异常波动，请返回"hold"
+     - `noise_risk` ≥ 0.6 时必须观望；0.4-0.6 区间需要降低仓位并详细说明风险
+     - 返回hold时必须填写 `avoid_reason`，并给出 `entry_delay_seconds` 或触发条件（如“突破MA20且成交量放大”）
 
 5. **reasoning字段**（必须详细，至少200字）：
    - 必须包含：为什么选择这个方向（long/short/hold）以及关键依据
@@ -1706,7 +1713,40 @@ JSON格式输出：
                 result = json.loads(response_text)
                 
                 # 提取方向、开仓限价、平仓限价（添加类型检查和转换）
-                direction_raw = result.get('direction', 'hold')
+                  def _safe_float(value, default=None):
+                      if value is None:
+                          return default
+                      if isinstance(value, (int, float)):
+                          return float(value)
+                      if isinstance(value, dict):
+                          inner_val = value.get('value')
+                          return _safe_float(inner_val, default)
+                      try:
+                          return float(value)
+                      except (TypeError, ValueError):
+                          return default
+                  
+                  def _safe_int(value, default=None):
+                      if value is None:
+                          return default
+                      if isinstance(value, int):
+                          return value
+                      try:
+                          return int(float(value))
+                      except (TypeError, ValueError):
+                          return default
+                  
+                  def _safe_str(value, default=''):
+                      if value is None:
+                          return default
+                      if isinstance(value, str):
+                          return value
+                      try:
+                          return str(value)
+                      except Exception:
+                          return default
+                  
+                  direction_raw = result.get('direction', 'hold')
                 # 确保direction是字符串类型，避免类型错误
                 if isinstance(direction_raw, dict):
                     direction = str(direction_raw.get('value', direction_raw)).lower() if isinstance(direction_raw.get('value', None), str) else 'hold'
@@ -1715,91 +1755,30 @@ JSON格式输出：
                 else:
                     direction = direction_raw.lower()
                 
-                entry_limit_price_raw = result.get('entry_limit_price', 0)
-                # 确保entry_limit_price是数字类型
-                if isinstance(entry_limit_price_raw, dict):
-                    entry_limit_price = float(entry_limit_price_raw.get('value', 0)) if isinstance(entry_limit_price_raw.get('value', None), (int, float)) else 0
-                elif not isinstance(entry_limit_price_raw, (int, float)):
-                    try:
-                        entry_limit_price = float(entry_limit_price_raw) if entry_limit_price_raw is not None else 0
-                    except (ValueError, TypeError):
-                        entry_limit_price = 0
-                else:
-                    entry_limit_price = entry_limit_price_raw
-                
-                exit_limit_price_raw = result.get('exit_limit_price', 0)
-                # 确保exit_limit_price是数字类型
-                if isinstance(exit_limit_price_raw, dict):
-                    exit_limit_price = float(exit_limit_price_raw.get('value', 0)) if isinstance(exit_limit_price_raw.get('value', None), (int, float)) else 0
-                elif not isinstance(exit_limit_price_raw, (int, float)):
-                    try:
-                        exit_limit_price = float(exit_limit_price_raw) if exit_limit_price_raw is not None else 0
-                    except (ValueError, TypeError):
-                        exit_limit_price = 0
-                else:
-                    exit_limit_price = exit_limit_price_raw
+                  entry_limit_price = _safe_float(result.get('entry_limit_price'), None)
+                  exit_limit_price = _safe_float(result.get('exit_limit_price'), None)
                 
                 # 记录分析结果（添加类型检查和转换）
-                recommendation_raw = result.get('recommendation', 'unknown')
-                # 确保recommendation是字符串类型
-                if isinstance(recommendation_raw, dict):
-                    recommendation = str(recommendation_raw)
-                elif not isinstance(recommendation_raw, str):
-                    recommendation = str(recommendation_raw) if recommendation_raw is not None else 'unknown'
-                else:
-                    recommendation = recommendation_raw
-                
-                confidence_raw = result.get('confidence', 0.0)
-                # 确保confidence是数字类型
-                if isinstance(confidence_raw, dict):
-                    confidence = float(confidence_raw.get('value', 0.0)) if isinstance(confidence_raw.get('value', None), (int, float)) else 0.0
-                elif not isinstance(confidence_raw, (int, float)):
-                    try:
-                        confidence = float(confidence_raw) if confidence_raw is not None else 0.0
-                    except (ValueError, TypeError):
-                        confidence = 0.0
-                else:
-                    confidence = confidence_raw
-                
-                trend_raw = result.get('trend', 'N/A')
-                # 确保trend是字符串类型
-                if isinstance(trend_raw, dict):
-                    trend = str(trend_raw.get('value', trend_raw)) if isinstance(trend_raw.get('value', None), str) else 'N/A'
-                elif not isinstance(trend_raw, str):
-                    trend = str(trend_raw) if trend_raw is not None else 'N/A'
-                else:
-                    trend = trend_raw
-                
-                reasoning_raw = result.get('reasoning', '')
-                # 确保reasoning是字符串类型
-                if isinstance(reasoning_raw, dict):
-                    reasoning = str(reasoning_raw)
-                elif not isinstance(reasoning_raw, str):
-                    reasoning = str(reasoning_raw) if reasoning_raw is not None else ''
-                else:
-                    reasoning = reasoning_raw
-                
+                  recommendation = _safe_str(result.get('recommendation', 'unknown'), 'unknown')
+                  confidence = _safe_float(result.get('confidence', 0.0), 0.0) or 0.0
+                  trend = _safe_str(result.get('trend', 'N/A'), 'N/A')
+                  reasoning_raw = result.get('reasoning', '')
+                  reasoning = _safe_str(reasoning_raw, '')
                 reasoning = reasoning[:200]  # 只记录前200字符，避免日志过长
+                  noise_risk = _safe_float(result.get('noise_risk'), None)
+                  avoid_reason = _safe_str(result.get('avoid_reason'))
+                  entry_delay_seconds = _safe_int(result.get('entry_delay_seconds'), None)
+                  strict_mode = bool(result.get('strict_mode', False))
+                  confidence_breakdown = result.get('confidence_breakdown') or {}
                 
                 # 确保所有数值都是数字类型，避免格式说明符错误
-                try:
-                    entry_limit_price_float = float(entry_limit_price) if entry_limit_price is not None else 0.0
-                except (ValueError, TypeError):
-                    entry_limit_price_float = 0.0
-                
-                try:
-                    exit_limit_price_float = float(exit_limit_price) if exit_limit_price is not None else 0.0
-                except (ValueError, TypeError):
-                    exit_limit_price_float = 0.0
-                
-                try:
-                    confidence_float = float(confidence) if confidence is not None else 0.0
-                except (ValueError, TypeError):
-                    confidence_float = 0.0
+                  entry_limit_price_float = entry_limit_price if entry_limit_price is not None else None
+                  exit_limit_price_float = exit_limit_price if exit_limit_price is not None else None
+                  confidence_float = confidence if confidence is not None else 0.0
                 
                 # 格式化数值，避免在f-string中使用格式说明符
-                entry_limit_price_str = f"{entry_limit_price_float:.5f}"
-                exit_limit_price_str = f"{exit_limit_price_float:.5f}"
+                  entry_limit_price_str = f"{entry_limit_price_float:.5f}" if entry_limit_price_float is not None else 'N/A'
+                  exit_limit_price_str = f"{exit_limit_price_float:.5f}" if exit_limit_price_float is not None else 'N/A'
                 confidence_str_log = f"{confidence_float:.2f}"
                 
                 # 记录方向、限价信息
@@ -1818,7 +1797,8 @@ JSON格式输出：
                         f"[DeepSeek分析结果] 交易对: {symbol} | "
                         f"建议: {recommendation} | "
                         f"趋势: {trend} | "
-                        f"信心度: {confidence_str_log}"
+                          f"信心度: {confidence_str_log} | "
+                          f"原因: {avoid_reason or '未提供'}"
                     )
                 
                 # 更新result字典，确保所有字段都是正确的类型
@@ -1829,6 +1809,11 @@ JSON格式输出：
                 result['confidence'] = confidence
                 result['trend'] = trend
                 result['reasoning'] = reasoning
+                  result['noise_risk'] = noise_risk
+                  result['avoid_reason'] = avoid_reason
+                  result['entry_delay_seconds'] = entry_delay_seconds
+                  result['strict_mode'] = strict_mode
+                  result['confidence_breakdown'] = confidence_breakdown
                 
                 # 记录详细的分析结果（包含完整推理过程）
                 self.logger.debug(f"[DeepSeek分析详情] 交易对: {symbol}")
