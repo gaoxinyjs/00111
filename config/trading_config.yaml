@@ -130,15 +130,15 @@ contract_trading:
     allow_both: false  # 是否允许同时持有多空仓位（通常不允许）
     prefer_direction: "auto"  # 首选方向：auto自动、long做多、short做空
 
-# 自动交易配置
-auto_trading:
-  enabled: true  # 启用自动交易（根据决策自动买入卖出）
-  min_confidence: 0.5  # 提高最低信心度阈值，过滤低质量信号
-  min_position_size: 0.005  # 最小仓位（0.5%），进一步降低以抓住更多小机会
-  entry_signal_threshold: 0.35  # 多因子综合评分阈值，低于该值不入场
-  # 狼式交易策略：快速出击，快速撤退
-  quick_profit_target: 0.06  # 快速获利目标：账户盈亏6%（约等于价格1.2% @5x）
-  quick_stop_loss: 0.04  # 快速止损：账户盈亏4%（价格回撤约0.8% @5x）
+  # 自动交易配置
+  auto_trading:
+    enabled: true  # 启用自动交易（根据决策自动买入卖出）
+    min_confidence: 0.5  # 提高最低信心度阈值，过滤低质量信号
+    min_position_size: 0.005  # 最小仓位（0.5%），进一步降低以抓住更多小机会
+    entry_signal_threshold: 0.35  # 多因子综合评分阈值，低于该值不入场
+    # 狼式交易策略：快速出击，快速撤退
+    quick_profit_target: 0.03  # 快速获利目标：账户盈亏3%（实际价格止盈 ≈ 账户盈亏 ÷ 杠杆）
+    quick_stop_loss: 0.015  # 快速止损：账户盈亏1.5%（实际价格止损 ≈ 账户亏损 ÷ 杠杆）
 
 # AI 仓位管理配置
 ai_position_management:
