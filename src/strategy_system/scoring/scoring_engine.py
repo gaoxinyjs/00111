@@ -45,4 +45,24 @@ class IndicatorScoringEngine:
             {"indicator_score": float, "breakdown": {...}}
         """
 
-        raise NotImplementedError("Aggregate weighted indicator scores")
+        weights = self.weights.as_dict()
+        weighted_sum = 0.0
+        total_weight = 0.0
+        breakdown: Dict[str, Dict[str, float]] = {}
+
+        for category, result in indicator_results.items():
+            raw_score = float(result.get("score", 0.0))
+            weight = weights.get(category, 0.0)
+            weighted_value = raw_score * weight
+            weighted_sum += weighted_value
+            total_weight += abs(weight)
+            breakdown[category] = {
+                "raw": raw_score,
+                "weight": weight,
+                "weighted": weighted_value,
+            }
+
+        indicator_score = weighted_sum / total_weight if total_weight else 0.0
+        indicator_score = max(-1.0, min(1.0, indicator_score))
+
+        return {"indicator_score": indicator_score, "breakdown": breakdown}
