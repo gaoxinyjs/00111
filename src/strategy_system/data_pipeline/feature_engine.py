@@ -49,6 +49,7 @@ class FeatureEngineer:
         for symbol, payload in market_data.items():
             intervals_data: Dict[str, Dict[str, Any]] = {}
             ticker = payload.get("ticker", {})
+            extras = payload.get("extras", {})
 
             for interval, candles in payload.get("intervals", {}).items():
                 if not candles:
@@ -75,6 +76,7 @@ class FeatureEngineer:
                 intervals=intervals_data,
                 multi_tf_snapshot=multi_tf_snapshot,
                 indicator_snapshot=indicator_snapshot,
+                extras=extras,
             )
 
             symbol_features[symbol] = {
@@ -85,6 +87,7 @@ class FeatureEngineer:
                 "multi_timeframe": multi_tf_snapshot,
                 "indicator_snapshot": indicator_snapshot,
                 "deepseek_market_data": deepseek_payload,
+                "extras": extras,
             }
 
         return symbol_features
@@ -201,10 +204,19 @@ class FeatureEngineer:
         intervals: Mapping[str, Dict[str, Any]],
         multi_tf_snapshot: Mapping[str, Any],
         indicator_snapshot: Mapping[str, Any],
+        extras: Mapping[str, Any],
     ) -> Dict[str, Any]:
         def _candles(interval: str) -> list:
             payload = intervals.get(interval)
             return payload.get("candles", []) if payload else []
+
+        orderbook = extras.get("orderbook", {})
+        funding = extras.get("funding", {})
+        open_interest = extras.get("open_interest", {})
+        taker_volume = extras.get("taker_volume", {})
+        long_short = extras.get("long_short_ratio", {})
+        mark_price = extras.get("mark_price", {})
+        liquidations = extras.get("liquidations", {})
 
         return {
             "symbol": symbol,
@@ -219,11 +231,17 @@ class FeatureEngineer:
             "kline_1D": _candles("1d"),
             "multi_timeframe": dict(multi_tf_snapshot),
             "indicators": dict(indicator_snapshot),
-            "orderbook": {},
-            "funding": {},
-            "derivatives": {},
+            "orderbook": orderbook,
+            "funding": funding,
+            "derivatives": {
+                "open_interest": open_interest,
+                "taker_volume": taker_volume,
+                "long_short_ratio": long_short,
+                "liquidations": liquidations,
+            },
             "impact": {},
             "chain": {},
             "sentiment": {},
             "macro": {},
+            "mark_price": mark_price,
         }

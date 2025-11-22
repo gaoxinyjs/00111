@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from datetime import datetime
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..analysis.deepseek_client import DeepSeekClient
@@ -20,6 +21,7 @@ from .indicators import (
 )
 from .scoring import DeepSeekSignal, FusionConfig, IndicatorScoringEngine, ScoringWeights, SignalFusionEngine
 from .env_loader import StrategyEnvKeys, load_env_keys
+from .state_store import StateStore
 
 
 @dataclass
@@ -58,7 +60,13 @@ class StrategyRunner:
         self._env_keys = env_keys or load_env_keys()
         self._strategy_config = strategy_config
         self._deepseek_client = deepseek_client or DeepSeekClient()
+        self._deepseek_cache: Dict[str, Dict[str, Any]] = {}
         self._active_position: Optional[Dict[str, Any]] = None
+        root = Path(__file__).resolve().parents[2]
+        self._state_store = StateStore(path=root / "data" / "strategy_state.json")
+        loaded_state = self._state_store.load()
+        self._active_position = loaded_state.get("active_position")
+        self._last_signals: Dict[str, Any] = loaded_state.get("last_signals", {})
         self._default_context = (
             StrategyContext(
                 symbols=strategy_config.symbols,
@@ -109,6 +117,7 @@ class StrategyRunner:
         best_symbol, best_payload = self._select_best_symbol(symbol_results)
 
         if not best_symbol or best_payload["final_signal"]["direction"] == "hold":
+            self._persist_state(symbol_results)
             return {
                 "status": "no_trade",
                 "signals": symbol_results,
@@ -137,6 +146,7 @@ class StrategyRunner:
         self._active_position = order
         position_change["opened"] = order
 
+        self._persist_state(symbol_results)
         return {
             "status": "trade",
             "order": order,
@@ -214,6 +224,12 @@ class StrategyRunner:
         market_data = feature_payload.get("deepseek_market_data", {})
         if not market_data:
             return DeepSeekSignal(direction="hold", confidence=0.0)
+        symbol = feature_payload.get("symbol")
+        cache_entry = self._deepseek_cache.get(symbol or "")
+        if cache_entry:
+            age = datetime.utcnow() - cache_entry["timestamp"]
+            if age <= timedelta(minutes=2):
+                return cache_entry["signal"]
 
         try:
             ai_signal = self._deepseek_client.generate_signal(market_data)
@@ -222,7 +238,10 @@ class StrategyRunner:
             confidence = max(0.0, min(1.0, confidence))
             if direction not in {"long", "short"}:
                 direction = "hold"
-            return DeepSeekSignal(direction=direction, confidence=confidence)
+            signal = DeepSeekSignal(direction=direction, confidence=confidence)
+            if symbol:
+                self._deepseek_cache[symbol] = {"timestamp": datetime.utcnow(), "signal": signal}
+            return signal
         except Exception as exc:  # pragma: no cover - defensive
             symbol = feature_payload.get("symbol", "UNKNOWN")
             self._logger.warning("DeepSeek signal failed for %s: %s", symbol, exc)
@@ -274,3 +293,55 @@ class StrategyRunner:
             self._active_position["stop_loss"] = feedback["new_stop"]
 
         return feedback
+
+    def _persist_state(self, symbol_results: Dict[str, Dict[str, Any]]) -> None:
+        last_signals = {}
+        timestamp = datetime.utcnow().isoformat()
+        for symbol, payload in symbol_results.items():
+            last_signals[symbol] = {
+                "final_signal": payload.get("final_signal"),
+                "indicator_score": payload.get("indicator_score"),
+                "timestamp": timestamp,
+            }
+        self._state_store.save(
+            {
+                "active_position": self._active_position,
+                "last_signals": last_signals,
+            }
+        )
+
+    def run_monitor_cycle(self) -> Dict[str, Any]:
+        """
+        Lightweight 1-minute monitor that refreshes active position data only.
+        """
+
+        if not self._active_position:
+            return {"status": "no_position"}
+
+        symbol = self._active_position.get("symbol")
+        if not symbol:
+            return {"status": "invalid_position"}
+
+        request = MarketDataRequest(symbol=symbol, intervals=["15m", "4h"], limit=120)
+        raw_market = self._collector.collect([request])
+        features = self._feature_engineer.build_features(raw_market)
+        feature_payload = features.get(symbol)
+        if not feature_payload:
+            return {"status": "no_data"}
+
+        indicator_outputs = self._evaluate_indicators(symbol, feature_payload)
+        indicator_score = self._scoring_engine.score(indicator_outputs)
+        deepseek_signal = self._obtain_deepseek_signal(feature_payload)
+        symbol_result = {
+            "indicator_outputs": indicator_outputs,
+            "indicator_score": indicator_score,
+            "deepseek_signal": {
+                "direction": deepseek_signal.direction,
+                "confidence": deepseek_signal.confidence,
+            },
+            "final_signal": self._fusion_engine.fuse(indicator_score["indicator_score"], deepseek_signal),
+        }
+        symbol_results = {symbol: symbol_result}
+        feedback = self._evaluate_active_position(symbol_results, {symbol: feature_payload})
+        self._persist_state(symbol_results)
+        return {"status": "monitor", "position_feedback": feedback, "signals": symbol_results}
